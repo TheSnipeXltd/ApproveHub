@@ -2030,8 +2030,22 @@ function wireSettings() {
      (PART 4 adds Payments/Approvals/Disputes/Messages/Reports
       + exact release blocking rules + final init call.)
      ========================================================= */
-  // initCore();  <-- Part 4 will call this after extending logic
-    // TEMP: run core init (until Part 4 is correctly inserted inside this IIFE)
-  initCore();
-})();
-  
+  // Expose what Part 4 needs
+window.__APP__ = {
+  state,
+  ROUTES,
+  wireAfterRender,
+  renderRoute,
+  route,
+  initCore,
+  h,
+  $,
+  $$,
+  on,
+  toast,
+  saveDb,
+  defaultDb,
+  seedIfNeeded
+};
+
+// Do NOT init yet — Part 4 will call it
