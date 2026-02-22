@@ -1760,16 +1760,9 @@
     ]);
   }
 function wireSettings() {
-  // Payee must not access full Settings (no data tools)
-  if (state.role === "payee") {
-    const exportBtn = $("#view [data-action='export']");
-    const resetBtn = $("#view [data-action='reset']");
-    if (exportBtn) exportBtn.setAttribute("disabled", "disabled");
-    if (resetBtn) resetBtn.setAttribute("disabled", "disabled");
-    const importFile = $("#importFile");
-    if (importFile) importFile.setAttribute("disabled", "disabled");
-  }
+  const isPayee = state.role === "payee";
 
+  // Theme dropdown
   const sel = $("#themeMode");
   on(sel, "change", () => {
     localStorage.setItem(APP.themeKey, sel.value);
@@ -1777,16 +1770,22 @@ function wireSettings() {
     toast("Theme", `Set to ${sel.value}`);
   });
 
+  // Theme quick toggle
   on($("#view [data-action='toggleTheme']"), "click", toggleTheme);
 
+  // Export
   on($("#view [data-action='export']"), "click", () => {
+    if (isPayee) return toast("Not allowed", "Payee role cannot export demo data.");
     state.db.meta.lastBackupAt = Date.now();
     saveDb();
     downloadText("approvehub-demo-export.json", JSON.stringify(state.db, null, 2), "application/json");
     toast("Exported", "Demo JSON downloaded.");
   });
 
+  // Reset
   on($("#view [data-action='reset']"), "click", () => {
+    if (isPayee) return toast("Not allowed", "Payee role cannot reset demo data.");
+
     openModal({
       title: "Reset demo",
       body: h("div", { class: "banner warn" }, [
@@ -1812,19 +1811,29 @@ function wireSettings() {
     });
   });
 
+  // Import
   const file = $("#importFile");
   on(file, "change", async () => {
+    if (isPayee) {
+      toast("Not allowed", "Payee role cannot import demo data.");
+      file.value = "";
+      return;
+    }
+
     const f = file.files?.[0];
     if (!f) return;
+
     try {
       const text = await f.text();
       const parsed = JSON.parse(text);
       const mig = migrate(parsed);
+
       if (!mig.ok) {
         toast("Import blocked", mig.reason || "Incompatible schema.");
         file.value = "";
         return;
       }
+
       state.db = mig.db;
       saveDb();
       toast("Imported", "Demo JSON imported.");
@@ -1835,8 +1844,16 @@ function wireSettings() {
       file.value = "";
     }
   });
-}
 
+  // If Payee: disable/hide data tools UI
+  if (isPayee) {
+    const exportBtn = $("#view [data-action='export']");
+    const resetBtn = $("#view [data-action='reset']");
+    if (exportBtn) exportBtn.setAttribute("disabled", "disabled");
+    if (resetBtn) resetBtn.setAttribute("disabled", "disabled");
+    if (file) file.setAttribute("disabled", "disabled");
+  }
+}
   /* =========================
      Page placeholders (Part 4 completes)
   ========================= */
