@@ -1761,6 +1761,17 @@
   }
 
   function wireSettings() {
+  // Payee must not access full Settings (no data tools)
+  if (state.role === "payee") {
+    const exportBtn = $("#view [data-action='export']");
+    const resetBtn = $("#view [data-action='reset']");
+    if (exportBtn) exportBtn.setAttribute("disabled", "disabled");
+    if (resetBtn) resetBtn.setAttribute("disabled", "disabled");
+    const importFile = $("#importFile");
+    if (importFile) importFile.setAttribute("disabled", "disabled");
+  }
+  // ...rest of existing wireSettings()
+}
     const sel = $("#themeMode");
     on(sel, "change", () => {
       localStorage.setItem(APP.themeKey, sel.value);
