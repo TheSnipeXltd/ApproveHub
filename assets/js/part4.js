@@ -661,7 +661,7 @@
 
   async function wirePayments() {
     // Create release
-    $$("#app [data-action='createRelease']").forEach((btn) => {
+    $$("#view [data-action='createRelease']").forEach((btn) => {
       on(btn, "click", async () => {
         const jobId = btn.getAttribute("data-job") || null;
         // ask for amount quickly
@@ -675,7 +675,7 @@
     });
 
     // Release actions
-    $$("#app [data-rel-action]").forEach((btn) => {
+    $$("#view [data-rel-action]").forEach((btn) => {
       on(btn, "click", async () => {
         const id = btn.getAttribute("data-rel");
         const action = btn.getAttribute("data-rel-action");
@@ -736,7 +736,7 @@
 
   async function wireDisputes() {
     // Raise dispute
-    const raiseBtn = $("#app [data-action='raiseDispute']");
+    const raiseBtn = $("#view [data-action='raiseDispute']");
     if (raiseBtn) {
       on(raiseBtn, "click", async () => {
         const jobId = $("#ah-dispute-job")?.value;
@@ -757,7 +757,7 @@
     }
 
     // Dispute actions
-    $$("#app [data-dispute-action]").forEach((btn) => {
+    $$("#view [data-dispute-action]").forEach((btn) => {
       on(btn, "click", async () => {
         const id = btn.getAttribute("data-dispute");
         const action = btn.getAttribute("data-dispute-action");
@@ -805,7 +805,7 @@
       });
     }
 
-    const sendBtn = $("#app [data-action='sendMessage']");
+    const sendBtn = $("#view [data-action='sendMessage']");
     if (sendBtn) {
       on(sendBtn, "click", () => {
         const jobId = $("#ah-msg-job")?.value;
@@ -820,7 +820,7 @@
   }
 
   async function wireReports() {
-    const exportBtn = $("#app [data-action='exportReport']");
+    const exportBtn = $("#view [data-action='exportReport']");
     if (!exportBtn) return;
     on(exportBtn, "click", () => {
       const payload = {
