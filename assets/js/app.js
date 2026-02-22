@@ -2074,5 +2074,7 @@ window.__APP__ = {
   openModal,
   perms,
   COMPLIANCE,
-})();
+};
 // Do NOT init yet — Part 4 will call it
+
+})(); // ✅ close the IIFE so app.js actually finishes
