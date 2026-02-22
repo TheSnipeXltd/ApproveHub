@@ -2006,7 +2006,6 @@
      ========================================================= */
 
   // initCore();  <-- Part 4 will call this after extending logic
-})();
 
  /* =========================================================
    ApproveHub — Static Demo App (localStorage, hash routing)
