@@ -3359,3 +3359,4 @@ function wireReports() {
    Final init call
 ========================= */
 initCore();
+})();
