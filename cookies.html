@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ApproveHub — Not found</title>
+  <meta name="robots" content="noindex" />
+  <link rel="stylesheet" href="assets/css/app.css" />
+</head>
+<body>
+  <main class="legal">
+    <header class="legal-head">
+      <h1>Page not found</h1>
+      <p class="muted">Redirecting you back to the app…</p>
+    </header>
+
+    <section class="card pad">
+      <p>If you are not redirected, click below:</p>
+      <a class="btn primary" href="./#/jobs">Go to ApproveHub</a>
+    </section>
+
+    <script>
+      // Keep hash routing working on GitHub Pages
+      const base = location.pathname.replace(/\/[^\/]*$/, "/");
+      location.replace(base + "#/jobs");
+    </script>
+  </main>
+</body>
+</html>
