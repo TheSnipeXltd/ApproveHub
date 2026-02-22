@@ -1759,8 +1759,7 @@
       ]),
     ]);
   }
-
-  function wireSettings() {
+function wireSettings() {
   // Payee must not access full Settings (no data tools)
   if (state.role === "payee") {
     const exportBtn = $("#view [data-action='export']");
@@ -1770,74 +1769,73 @@
     const importFile = $("#importFile");
     if (importFile) importFile.setAttribute("disabled", "disabled");
   }
-  // ...rest of existing wireSettings()
-}
-    const sel = $("#themeMode");
-    on(sel, "change", () => {
-      localStorage.setItem(APP.themeKey, sel.value);
-      applyThemeFromStorage();
-      toast("Theme", `Set to ${sel.value}`);
+
+  const sel = $("#themeMode");
+  on(sel, "change", () => {
+    localStorage.setItem(APP.themeKey, sel.value);
+    applyThemeFromStorage();
+    toast("Theme", `Set to ${sel.value}`);
+  });
+
+  on($("#view [data-action='toggleTheme']"), "click", toggleTheme);
+
+  on($("#view [data-action='export']"), "click", () => {
+    state.db.meta.lastBackupAt = Date.now();
+    saveDb();
+    downloadText("approvehub-demo-export.json", JSON.stringify(state.db, null, 2), "application/json");
+    toast("Exported", "Demo JSON downloaded.");
+  });
+
+  on($("#view [data-action='reset']"), "click", () => {
+    openModal({
+      title: "Reset demo",
+      body: h("div", { class: "banner warn" }, [
+        h("div", { class: "title" }, "This will clear all local demo data"),
+        h("div", { class: "body" }, "One-click reset will wipe localStorage for this demo and restore seed data."),
+      ]),
+      footer: h("div", { class: "hstack" }, [
+        h("button", { class: "btn", type: "button", "data-close": "1" }, "Cancel"),
+        h("button", { class: "btn danger", type: "button", "data-confirm": "1" }, "Reset"),
+      ]),
+      onReady: ({ root, close }) => {
+        on($("[data-close]", root), "click", close);
+        on($("[data-confirm]", root), "click", () => {
+          localStorage.removeItem(APP.storageKey);
+          state.db = defaultDb();
+          seedIfNeeded();
+          saveDb();
+          close();
+          toast("Reset", "Demo reset to seed data.");
+          location.hash = "#/jobs";
+        });
+      },
     });
+  });
 
-    on($("#view [data-action='toggleTheme']"), "click", toggleTheme);
-
-    on($("#view [data-action='export']"), "click", () => {
-      state.db.meta.lastBackupAt = Date.now();
-      saveDb();
-      downloadText("approvehub-demo-export.json", JSON.stringify(state.db, null, 2), "application/json");
-      toast("Exported", "Demo JSON downloaded.");
-    });
-
-    on($("#view [data-action='reset']"), "click", () => {
-      openModal({
-        title: "Reset demo",
-        body: h("div", { class: "banner warn" }, [
-          h("div", { class: "title" }, "This will clear all local demo data"),
-          h("div", { class: "body" }, "One-click reset will wipe localStorage for this demo and restore seed data."),
-        ]),
-        footer: h("div", { class: "hstack" }, [
-          h("button", { class: "btn", type: "button", "data-close": "1" }, "Cancel"),
-          h("button", { class: "btn danger", type: "button", "data-confirm": "1" }, "Reset"),
-        ]),
-        onReady: ({ root, close }) => {
-          on($("[data-close]", root), "click", close);
-          on($("[data-confirm]", root), "click", () => {
-            localStorage.removeItem(APP.storageKey);
-            state.db = defaultDb();
-            seedIfNeeded();
-            saveDb();
-            close();
-            toast("Reset", "Demo reset to seed data.");
-            location.hash = "#/jobs";
-          });
-        },
-      });
-    });
-
-    const file = $("#importFile");
-    on(file, "change", async () => {
-      const f = file.files?.[0];
-      if (!f) return;
-      try {
-        const text = await f.text();
-        const parsed = JSON.parse(text);
-        const mig = migrate(parsed);
-        if (!mig.ok) {
-          toast("Import blocked", mig.reason || "Incompatible schema.");
-          file.value = "";
-          return;
-        }
-        state.db = mig.db;
-        saveDb();
-        toast("Imported", "Demo JSON imported.");
+  const file = $("#importFile");
+  on(file, "change", async () => {
+    const f = file.files?.[0];
+    if (!f) return;
+    try {
+      const text = await f.text();
+      const parsed = JSON.parse(text);
+      const mig = migrate(parsed);
+      if (!mig.ok) {
+        toast("Import blocked", mig.reason || "Incompatible schema.");
         file.value = "";
-        route();
-      } catch {
-        toast("Import failed", "Invalid JSON file.");
-        file.value = "";
+        return;
       }
-    });
-  }
+      state.db = mig.db;
+      saveDb();
+      toast("Imported", "Demo JSON imported.");
+      file.value = "";
+      route();
+    } catch {
+      toast("Import failed", "Invalid JSON file.");
+      file.value = "";
+    }
+  });
+}
 
   /* =========================
      Page placeholders (Part 4 completes)
