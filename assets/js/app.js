@@ -2032,21 +2032,19 @@ function wireSettings() {
      ========================================================= */
   // Expose what Part 4 needs
 window.__APP__ = {
-  // core state + routing
+  // state + router
   state,
   ROUTES,
   route,
   initCore,
 
-  // ui helpers
+  // DOM helpers
   h,
   $,
   $$,
   on,
-  toast,
-  openModal,
 
-  // formatting/helpers Part4 tries to use
+  // utils Part 4 may use
   esc,
   money,
   fmtDateTime,
@@ -2055,8 +2053,13 @@ window.__APP__ = {
   safeFile,
   downloadText,
 
-  // permissions + selectors Part4 tries to use
-  perms,
+  // db helpers
+  saveDb,
+  defaultDb,
+  seedIfNeeded,
+  migrate,
+
+  // selectors
   getJob,
   getPayee,
   getInvoice,
@@ -2066,13 +2069,9 @@ window.__APP__ = {
   jobReleases,
   jobDisputes,
 
-  // persistence
-  saveDb,
-  defaultDb,
-  seedIfNeeded,
-
-  // compliance strings
+  // modal + perms + compliance
+  openModal,
+  perms,
   COMPLIANCE,
 };
-
 // Do NOT init yet — Part 4 will call it
