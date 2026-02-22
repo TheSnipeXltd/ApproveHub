@@ -1248,7 +1248,7 @@
     const totalToPayees = Number(inv.totalToPayees || 0);
     const feePot = Math.max(0, clientPaymentBeforeVat - totalToPayees);
     const vatRate = clamp(inv.feeVatRate ?? 20, 0, 100);
-    const vatOnFee = Math.round((feePot * vatRate) / 100);
+    const vatOnFee = Math.round(((feePot * vatRate) / 100) * 100) / 100;
 
     const grandTotal = clientPaymentBeforeVat + vatOnFee;
 
