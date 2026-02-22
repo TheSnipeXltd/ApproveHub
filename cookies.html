@@ -1,29 +1,31 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ApproveHub — Not found</title>
-  <meta name="robots" content="noindex" />
-  <link rel="stylesheet" href="assets/css/app.css" />
-</head>
-<body>
-  <main class="legal">
-    <header class="legal-head">
-      <h1>Page not found</h1>
-      <p class="muted">Redirecting you back to the app…</p>
-    </header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ApproveHub — Cookies</title>
+    <link rel="stylesheet" href="assets/css/app.css" />
+  </head>
+  <body class="legal">
+    <div class="legal-head">
+      <a class="btn" href="./#/jobs">← Back to app</a>
+      <h1>Cookies</h1>
+      <p class="muted">Demo documentation page for ApproveHub.</p>
+    </div>
 
-    <section class="card pad">
-      <p>If you are not redirected, click below:</p>
-      <a class="btn primary" href="./#/jobs">Go to ApproveHub</a>
-    </section>
+    <h2>Demo-only</h2>
+    <p class="muted">
+      This site is a static demo. It does not use analytics cookies or tracking pixels by default.
+    </p>
 
-    <script>
-      // Keep hash routing working on GitHub Pages
-      const base = location.pathname.replace(/\/[^\/]*$/, "/");
-      location.replace(base + "#/jobs");
-    </script>
-  </main>
-</body>
+    <h2>Local storage</h2>
+    <p class="muted">
+      The demo stores data locally in your browser using <code>localStorage</code> (jobs, invoices, releases, etc.) and your UI preferences.
+    </p>
+
+    <div class="banner info" style="margin-top:16px">
+      <div class="title">Important</div>
+      <div class="body">We do not hold client funds. Funds are held and released by our escrow/PBA partner.</div>
+    </div>
+  </body>
 </html>
