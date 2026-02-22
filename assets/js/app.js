@@ -2032,20 +2032,47 @@ function wireSettings() {
      ========================================================= */
   // Expose what Part 4 needs
 window.__APP__ = {
+  // core state + routing
   state,
   ROUTES,
-  wireAfterRender,
-  renderRoute,
   route,
   initCore,
+
+  // ui helpers
   h,
   $,
   $$,
   on,
   toast,
+  openModal,
+
+  // formatting/helpers Part4 tries to use
+  esc,
+  money,
+  fmtDateTime,
+  uid,
+  clamp,
+  safeFile,
+  downloadText,
+
+  // permissions + selectors Part4 tries to use
+  perms,
+  getJob,
+  getPayee,
+  getInvoice,
+  getMilestone,
+  jobInvoices,
+  jobMilestones,
+  jobReleases,
+  jobDisputes,
+
+  // persistence
   saveDb,
   defaultDb,
-  seedIfNeeded
+  seedIfNeeded,
+
+  // compliance strings
+  COMPLIANCE,
 };
 
 // Do NOT init yet — Part 4 will call it
