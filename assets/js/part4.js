@@ -563,7 +563,7 @@
     const p = perms();
     const jobs = state.db.jobs.filter((j) => j.status !== "archived");
 
-    const jobId = (location.hash.match(/messages\/([^/?#]+)/) || [])[1] || (jobs[0]?.id || "");
+    let jobId = ""; try {   const raw = location.hash || "";   const qs = raw.includes("?") ? raw.split("?")[1] : "";   const q = new URLSearchParams(qs);   jobId = q.get("job") || ""; } catch {} if (!jobId) jobId = jobs[0]?.id || "";
     const job = getJob(jobId);
     const msgs = state.db.messages.filter((m) => m.jobId === jobId).slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
@@ -801,7 +801,7 @@
     if (sel) {
       on(sel, "change", () => {
         const jobId = sel.value;
-        location.hash = `#/messages/${jobId}`;
+        location.hash = `#/messages?job=${encodeURIComponent(jobId)}`;
       });
     }
 
