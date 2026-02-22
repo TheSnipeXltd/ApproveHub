@@ -778,7 +778,7 @@
 
     setActiveNav(m.key);
     mount(m.render(m.params, query));
-    wireAfterRender(m.key, m.params, query);
+    // allow PART 4 to patch wiring const wired = (window.__APP__ && window.__APP__.wireAfterRender) ? window.__APP__.wireAfterRender : wireAfterRender; wired(m.key, m.params, query);
     updateNavCounters();
   }
 
