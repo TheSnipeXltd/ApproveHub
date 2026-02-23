@@ -725,30 +725,33 @@
      Approvals inbox (used by Approvals + Notifications)
   --------------------------- */
   function approvalsInboxItems() {
-    const items = [];
+  const items = [];
 
-    // bank confirmations
-    for (const p of db.payees) {
-      if (p.bankChanged && !p.bankConfirmed) {
-        items.push({ type: "bank", id: p.id, label: `Confirm bank details: ${p.name}` });
-      }
+  // bank confirmations
+  for (const p of (db?.payees || [])) {
+    if (p && p.bankChanged && !p.bankConfirmed) {
+      items.push({ type: "bank", id: p.id, label: `Confirm bank details: ${p.name}` });
     }
-
-    // release approvals + ready to send
-    for (const r of db.releases) {
-      if (r.status === "Submitted" && !r.approvals.manager) {
-        items.push({ type: "release_mgr", id: r.id, label: `Approve release (Manager): ${r.title}` });
-      }
-      if (r.status === "Manager approved" && !r.approvals.client) {
-        items.push({ type: "release_client", id: r.id, label: `Approve release (Client): ${r.title}` });
-      }
-      if (r.status === "Client approved") {
-        items.push({ type: "release_ready", id: r.id, label: `Ready to send: ${r.title}` });
-      }
-    }
-
-    return items;
   }
+
+  // release approvals + ready to send
+  for (const r of (db?.releases || [])) {
+    if (!r) continue;
+    const a = r.approvals || { manager: false, client: false };
+
+    if (r.status === "Submitted" && !a.manager) {
+      items.push({ type: "release_mgr", id: r.id, label: `Approve release (Manager): ${r.title}` });
+    }
+    if (r.status === "Manager approved" && !a.client) {
+      items.push({ type: "release_client", id: r.id, label: `Approve release (Client): ${r.title}` });
+    }
+    if (r.status === "Client approved") {
+      items.push({ type: "release_ready", id: r.id, label: `Ready to send: ${r.title}` });
+    }
+  }
+
+  return items;
+}
 
   function countApprovalsForRole(role) {
     const p = ROLE_PERMS[role] || ROLE_PERMS.manager;
