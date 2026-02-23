@@ -3,14 +3,14 @@
   "use strict";
 
   /* =========================================================
-     ApproveHub — Static Demo App (single-file JS)
-     - Hash routing only
+     ApproveHub — Static Demo (single-file JS)
+     - Hash routing only (GitHub Pages)
      - localStorage persistence + schema migration/reset
      - Event delegation: #view + #modalRoot
      ========================================================= */
 
   const LS_KEY = "approvehub_demo_db";
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
 
   // MUST MATCH EXACTLY (character-for-character)
   const VAT_DISCLAIMER =
@@ -27,11 +27,66 @@
   };
 
   const ROLE_PERMS = {
-    manager: { nav: ["jobs","payments","approvals","disputes","messages","company","reports","settings"], canReset:true, canExport:true, canImport:true, canApproveManager:true, canApproveClient:false, canConfirmBank:true, canSendToPartner:true, canMarkReleased:true, canEditBank:true, canEditInvoice:true, canCreateJob:true },
-    client: { nav: ["jobs","payments","approvals","disputes","messages","company","settings"], canReset:false, canExport:true, canImport:true, canApproveManager:false, canApproveClient:true, canConfirmBank:false, canSendToPartner:false, canMarkReleased:false, canEditBank:false, canEditInvoice:true, canCreateJob:false },
-    payee: { nav: ["payments","messages","company","settings"], canReset:false, canExport:false, canImport:false, canApproveManager:false, canApproveClient:false, canConfirmBank:false, canSendToPartner:false, canMarkReleased:false, canEditBank:true, canEditInvoice:false, canCreateJob:false },
-    accountant: { nav: ["jobs","reports","settings"], canReset:false, canExport:true, canImport:true, canApproveManager:false, canApproveClient:false, canConfirmBank:false, canSendToPartner:false, canMarkReleased:false, canEditBank:false, canEditInvoice:false, canCreateJob:false },
-    admin: { nav: ["jobs","payments","approvals","disputes","messages","company","reports","settings"], canReset:true, canExport:true, canImport:true, canApproveManager:true, canApproveClient:true, canConfirmBank:true, canSendToPartner:true, canMarkReleased:true, canEditBank:true, canEditInvoice:true, canCreateJob:true },
+    manager: {
+      nav: ["dashboard","jobs","payments","approvals","disputes","messages","company","reports","settings"],
+      canReset: true, canExport: true, canImport: true,
+      canApproveManager: true, canApproveClient: false,
+      canConfirmBank: true,
+      canSendToPartner: true,
+      canMarkReleased: false,
+      canEditBank: true,
+      canEditInvoice: true,
+      canCreateJob: true,
+      canToggleTestMode: false,
+    },
+    client: {
+      nav: ["dashboard","jobs","payments","approvals","disputes","messages","company","settings"],
+      canReset: false, canExport: true, canImport: true,
+      canApproveManager: false, canApproveClient: true,
+      canConfirmBank: false,
+      canSendToPartner: false,
+      canMarkReleased: false,
+      canEditBank: false,
+      canEditInvoice: true,
+      canCreateJob: false,
+      canToggleTestMode: false,
+    },
+    payee: {
+      nav: ["dashboard","payments","messages","company","settings"],
+      canReset: false, canExport: false, canImport: false,
+      canApproveManager: false, canApproveClient: false,
+      canConfirmBank: false,
+      canSendToPartner: false,
+      canMarkReleased: false,
+      canEditBank: true,
+      canEditInvoice: false,
+      canCreateJob: false,
+      canToggleTestMode: false,
+    },
+    accountant: {
+      nav: ["dashboard","jobs","reports","settings"],
+      canReset: false, canExport: true, canImport: true,
+      canApproveManager: false, canApproveClient: false,
+      canConfirmBank: false,
+      canSendToPartner: false,
+      canMarkReleased: false,
+      canEditBank: false,
+      canEditInvoice: false,
+      canCreateJob: false,
+      canToggleTestMode: false,
+    },
+    admin: {
+      nav: ["dashboard","jobs","payments","approvals","disputes","messages","company","reports","settings"],
+      canReset: true, canExport: true, canImport: true,
+      canApproveManager: true, canApproveClient: true,
+      canConfirmBank: true,
+      canSendToPartner: true,
+      canMarkReleased: true,
+      canEditBank: true,
+      canEditInvoice: true,
+      canCreateJob: true,
+      canToggleTestMode: true,
+    },
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -56,8 +111,11 @@
 
   function formatGBP(n) {
     const num = Number(n || 0);
-    try { return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(num); }
-    catch { return `£${num.toFixed(2)}`; }
+    try {
+      return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(num);
+    } catch {
+      return `£${num.toFixed(2)}`;
+    }
   }
 
   function formatDate(iso) {
@@ -101,17 +159,20 @@
   }
 
   /* ---------------------------
-     Storage + Seed
+     UI State
   --------------------------- */
-  let db = null;
-
   const ui = {
     role: localStorage.getItem("approvehub_role") || "manager",
-    theme: localStorage.getItem("approvehub_theme") || "system", // system | light | dark
-    route: { path: "/jobs", params: {}, query: {} },
+    theme: localStorage.getItem("approvehub_theme") || "system", // system|light|dark
+    route: { path: "/dashboard", params: {}, query: {} },
   };
 
   function perms() { return ROLE_PERMS[ui.role] || ROLE_PERMS.manager; }
+
+  /* ---------------------------
+     Storage + migration
+  --------------------------- */
+  let db = null;
 
   function loadDb() {
     const raw = localStorage.getItem(LS_KEY);
@@ -129,23 +190,61 @@
     return loaded;
   }
 
-  function seedIfNeeded() {
-    const loaded = migrate(loadDb());
-    if (!loaded) { db = defaultDb(); saveDb(); return; }
-    db = loaded;
+  function normalizeDb() {
+    // arrays
+    db.payees = Array.isArray(db.payees) ? db.payees : [];
+    db.jobs = Array.isArray(db.jobs) ? db.jobs : [];
+    db.milestones = Array.isArray(db.milestones) ? db.milestones : [];
+    db.invoices = Array.isArray(db.invoices) ? db.invoices : [];
+    db.releases = Array.isArray(db.releases) ? db.releases : [];
+    db.disputes = Array.isArray(db.disputes) ? db.disputes : [];
+    db.messages = Array.isArray(db.messages) ? db.messages : [];
+    db.snapshots = Array.isArray(db.snapshots) ? db.snapshots : [];
+    db.auditLog = Array.isArray(db.auditLog) ? db.auditLog : [];
+
+    // meta + company
+    db.meta = db.meta && typeof db.meta === "object" ? db.meta : {};
+    if (typeof db.meta.testMode !== "boolean") db.meta.testMode = false;
+
+    db.company = db.company && typeof db.company === "object" ? db.company : {};
+    const c = db.company;
+    if (!c.companyName) c.companyName = "ApproveHub Demo Co Ltd";
+    if (!c.vatNumber) c.vatNumber = "GB 000 0000 00";
+    if (!c.companyRegNumber) c.companyRegNumber = "00000000";
+    if (!c.utrNumber) c.utrNumber = "00000 00000";
+    if (!c.nationalInsuranceNumber) c.nationalInsuranceNumber = "QQ 12 34 56 C";
+    if (!c.companyAddress) c.companyAddress = "123 Oak Street, Central City";
+    if (!c.billingAddress) c.billingAddress = "123 Oak Street, Central City";
+    if (!c.phoneNumber) c.phoneNumber = "(020) 1234 5678";
+
+    // releases approvals
+    for (const r of db.releases) {
+      if (!r.approvals) r.approvals = { manager: false, client: false };
+      if (!Array.isArray(r.payeeSplits)) r.payeeSplits = [];
+    }
+
+    // invoices: main contractor + status
+    for (const inv of db.invoices) {
+      if (typeof inv.mainContractorAmount !== "number") inv.mainContractorAmount = 0;
+      if (!inv.status) inv.status = "draft";
+      if (!Array.isArray(inv.lineItems)) inv.lineItems = [];
+    }
   }
 
-  function resetDb(reason = "Reset demo") {
-    db = defaultDb();
-    db.meta.lastResetReason = reason;
+  function seedIfNeeded() {
+    const loaded = migrate(loadDb());
+    if (!loaded) {
+      db = defaultDb(); // defined in PART 2
+      saveDb();
+      return;
+    }
+    db = loaded;
+    normalizeDb();
     saveDb();
-    toast("info", "Demo reset", "Demo data has been reset.");
-    log("reset_demo", "db", "root", null, { reason });
-    routeTo("#/jobs");
   }
 
   /* ---------------------------
-     Finders + Derived
+     Finders + derived collections
   --------------------------- */
   function getJob(jobId) { return db.jobs.find(j => j.id === jobId) || null; }
   function getPayee(payeeId) { return db.payees.find(p => p.id === payeeId) || null; }
@@ -159,10 +258,24 @@
   function jobDisputes(job) { return (job?.disputeIds || []).map(id => db.disputes.find(d => d.id === id)).filter(Boolean); }
   function jobThreadMessages(job) { return db.messages.filter(m => m.threadId === job.threadId).sort((a,b) => (a.ts > b.ts ? 1 : -1)); }
 
+  /* ---------------------------
+     Invoice totals (includes main contractor)
+  --------------------------- */
   function invoiceTotals(inv) {
     const clientPaymentBeforeVat = Number(inv.clientPaymentBeforeVat || 0);
-    const totalToPayees = (inv.lineItems || []).reduce((s, li) => s + Number(li.amount || 0), 0);
-    const feePot = Math.max(0, clientPaymentBeforeVat - totalToPayees);
+
+    const totalToTrades = (inv.lineItems || [])
+      .filter(li => li.category === "contractor")
+      .reduce((s, li) => s + Number(li.amount || 0), 0);
+
+    const totalToSuppliers = (inv.lineItems || [])
+      .filter(li => li.category === "supplier")
+      .reduce((s, li) => s + Number(li.amount || 0), 0);
+
+    const mainContractorAmount = Number(inv.mainContractorAmount || 0);
+    const totalOutgoings = totalToTrades + totalToSuppliers + mainContractorAmount;
+
+    const feePot = Math.max(0, clientPaymentBeforeVat - totalOutgoings);
     const vatRate = clamp(Number(inv.feeVatRate ?? 20), 0, 100);
     const vatOnFee = Math.round((feePot * vatRate / 100) * 100) / 100;
     const grandTotal = Math.round((clientPaymentBeforeVat + vatOnFee) * 100) / 100;
@@ -171,7 +284,19 @@
     const exampleWholeVat = Math.round((clientPaymentBeforeVat * 0.2) * 100) / 100;
     const illustrativeDiff = Math.max(0, Math.round((exampleWholeVat - vatOnFee) * 100) / 100);
 
-    return { clientPaymentBeforeVat, totalToPayees, feePot, vatRate, vatOnFee, grandTotal, exampleWholeVat, illustrativeDiff };
+    return {
+      clientPaymentBeforeVat,
+      totalToTrades,
+      totalToSuppliers,
+      mainContractorAmount,
+      totalOutgoings,
+      feePot,
+      vatRate,
+      vatOnFee,
+      grandTotal,
+      exampleWholeVat,
+      illustrativeDiff,
+    };
   }
 
   /* CONTINUES IN PART 2 */
@@ -179,7 +304,8 @@
 
  // PART 2 START
   /* ---------------------------
-     Default DB (seed)
+     Default DB (seed) — schema v2
+     - Adds: company, meta.testMode, invoice.status, invoice.mainContractorAmount
   --------------------------- */
   function defaultDb() {
     const payees = [
@@ -218,212 +344,315 @@
       },
     ];
 
+    const company = {
+      companyName: "My Construction Ltd",
+      vatNumber: "GB 000 0000 00",
+      companyRegNumber: "00000000",
+      utrNumber: "00000 00000",
+      nationalInsuranceNumber: "QQ 12 34 56 C",
+      companyAddress: "123 Oak Street, Central City",
+      billingAddress: "123 Oak Street, Central City",
+      phoneNumber: "(020) 1234 5678",
+    };
+
     const jobs = [
-      { id: "job_hero", name: "Loft Conversion — West Wickham", clientName: "A. Patel", address: "West Wickham, BR4 (demo)", status: "open", archived: false, createdAt: dayIso(26), updatedAt: dayIso(1), description: "Dormer loft conversion with staged releases to trades and suppliers.", milestoneIds: ["ms_dep","ms_struct","ms_first","ms_second","ms_final"], invoiceIds: ["inv_hero_1"], releaseIds: ["rel_hero_1","rel_hero_2"], disputeIds: ["dis_hero_1"], threadId: "thr_job_hero" },
-      { id: "job_kext", name: "Kitchen Extension — Beckenham", clientName: "J. Morris", address: "Beckenham, BR3 (demo)", status: "open", archived: false, createdAt: dayIso(40), updatedAt: dayIso(3), description: "Single-storey rear extension. Pending client approval for a stage release.", milestoneIds: ["ms_k1","ms_k2","ms_k3"], invoiceIds: ["inv_kext_1"], releaseIds: ["rel_kext_1"], disputeIds: [], threadId: "thr_job_kext" },
-      { id: "job_roof", name: "Roof Repair — Croydon", clientName: "S. Green", address: "Croydon, CR0 (demo)", status: "open", archived: false, createdAt: dayIso(14), updatedAt: dayIso(2), description: "Urgent repair. Draft release awaiting submission.", milestoneIds: ["ms_r1"], invoiceIds: ["inv_roof_1"], releaseIds: ["rel_roof_1"], disputeIds: [], threadId: "thr_job_roof" },
-      { id: "job_bath", name: "Bathroom Refurb — Bromley", clientName: "K. Singh", address: "Bromley, BR1 (demo)", status: "open", archived: false, createdAt: dayIso(20), updatedAt: dayIso(7), description: "Mid-project. No disputes.", milestoneIds: ["ms_b1"], invoiceIds: ["inv_bath_1"], releaseIds: [], disputeIds: [], threadId: "thr_job_bath" },
-      { id: "job_drive", name: "Driveway Resurface — Orpington", clientName: "D. Clark", address: "Orpington, BR6 (demo)", status: "open", archived: false, createdAt: dayIso(9), updatedAt: dayIso(1), description: "Materials ordered. Awaiting evidence on milestone.", milestoneIds: ["ms_d1"], invoiceIds: ["inv_drive_1"], releaseIds: ["rel_drive_1"], disputeIds: [], threadId: "thr_job_drive" },
-      { id: "job_done", name: "Flat Refresh — Lewisham (Completed)", clientName: "R. Evans", address: "Lewisham, SE13 (demo)", status: "completed", archived: false, createdAt: dayIso(80), updatedAt: dayIso(50), description: "Completed job (demo).", milestoneIds: ["ms_c1"], invoiceIds: ["inv_done_1"], releaseIds: ["rel_done_1"], disputeIds: [], threadId: "thr_job_done" },
+      {
+        id: "job_hilltop",
+        name: "Hilltop Apartments",
+        location: "Central City",
+        clientName: "A. Patel",
+        address: "Central City (demo)",
+        status: "open",
+        archived: false,
+        createdAt: dayIso(26),
+        updatedAt: dayIso(1),
+        description: "Multi-trade approvals with staged invoice releases.",
+        milestoneIds: ["ms_h1","ms_h2","ms_h3","ms_h4"],
+        invoiceIds: ["inv_h_1","inv_h_2","inv_h_3","inv_h_4","inv_h_5","inv_h_6","inv_h_7","inv_h_8"],
+        releaseIds: ["rel_h_1","rel_h_2","rel_h_3"],
+        disputeIds: ["dis_h_1"],
+        threadId: "thr_job_hilltop",
+      },
+      {
+        id: "job_oakwood",
+        name: "Oakwood Office Park",
+        location: "Oakwood",
+        clientName: "J. Morris",
+        address: "Oakwood (demo)",
+        status: "open",
+        archived: false,
+        createdAt: dayIso(40),
+        updatedAt: dayIso(3),
+        description: "Office park refurb with invoice tile workflow.",
+        milestoneIds: ["ms_o1","ms_o2","ms_o3"],
+        invoiceIds: ["inv_o_1","inv_o_2","inv_o_3","inv_o_4","inv_o_5","inv_o_6","inv_o_7"],
+        releaseIds: ["rel_o_1"],
+        disputeIds: [],
+        threadId: "thr_job_oakwood",
+      },
+      {
+        id: "job_lakeside",
+        name: "Lakeside Shopping Center",
+        location: "Riverside",
+        clientName: "S. Green",
+        address: "Riverside (demo)",
+        status: "open",
+        archived: false,
+        createdAt: dayIso(14),
+        updatedAt: dayIso(2),
+        description: "Supplier-heavy project with approvals.",
+        milestoneIds: ["ms_l1"],
+        invoiceIds: ["inv_l_1"],
+        releaseIds: ["rel_l_1"],
+        disputeIds: [],
+        threadId: "thr_job_lakeside",
+      },
+      {
+        id: "job_downtown",
+        name: "Downtown Tower",
+        location: "Metroville",
+        clientName: "K. Singh",
+        address: "Metroville (demo)",
+        status: "open",
+        archived: false,
+        createdAt: dayIso(20),
+        updatedAt: dayIso(7),
+        description: "Progress-based releases with evidence.",
+        milestoneIds: ["ms_dt_1"],
+        invoiceIds: ["inv_dt_1"],
+        releaseIds: [],
+        disputeIds: [],
+        threadId: "thr_job_downtown",
+      },
+      {
+        id: "job_greenfield",
+        name: "Greenfield Housing",
+        location: "Greenfield",
+        clientName: "D. Clark",
+        address: "Greenfield (demo)",
+        status: "open",
+        archived: false,
+        createdAt: dayIso(9),
+        updatedAt: dayIso(1),
+        description: "Milestone evidence demo blockers.",
+        milestoneIds: ["ms_g_1"],
+        invoiceIds: ["inv_g_1"],
+        releaseIds: ["rel_g_1"],
+        disputeIds: [],
+        threadId: "thr_job_greenfield",
+      },
+      {
+        id: "job_seaview",
+        name: "Seaview Condos",
+        location: "Coastal Town",
+        clientName: "R. Evans",
+        address: "Coastal Town (demo)",
+        status: "completed",
+        archived: false,
+        createdAt: dayIso(80),
+        updatedAt: dayIso(50),
+        description: "Completed job (demo).",
+        milestoneIds: ["ms_s_1"],
+        invoiceIds: ["inv_s_1"],
+        releaseIds: ["rel_s_1"],
+        disputeIds: [],
+        threadId: "thr_job_seaview",
+      },
     ];
 
     const milestones = [
-      { id: "ms_dep", jobId: "job_hero", title: "Deposit & Pre-start", evidenceRequired: false, evidenceProvided: true, targetDate: dayIso(30) },
-      { id: "ms_struct", jobId: "job_hero", title: "Structure & Steel Installed", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(18) },
-      { id: "ms_first", jobId: "job_hero", title: "First Fix Completed", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(10) },
-      { id: "ms_second", jobId: "job_hero", title: "Second Fix Completed", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(5) },
-      { id: "ms_final", jobId: "job_hero", title: "Practical Completion", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(-7) },
+      { id: "ms_h1", jobId: "job_hilltop", title: "Deposit & Pre-start", evidenceRequired: false, evidenceProvided: true, targetDate: dayIso(30) },
+      { id: "ms_h2", jobId: "job_hilltop", title: "Structure Complete", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(18) },
+      { id: "ms_h3", jobId: "job_hilltop", title: "First Fix", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(10) },
+      { id: "ms_h4", jobId: "job_hilltop", title: "Second Fix", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(5) },
 
-      { id: "ms_k1", jobId: "job_kext", title: "Groundworks", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(25) },
-      { id: "ms_k2", jobId: "job_kext", title: "Shell Weather-tight", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(12) },
-      { id: "ms_k3", jobId: "job_kext", title: "Kitchen Fit", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(4) },
+      { id: "ms_o1", jobId: "job_oakwood", title: "Kick-off", evidenceRequired: false, evidenceProvided: true, targetDate: dayIso(28) },
+      { id: "ms_o2", jobId: "job_oakwood", title: "Fit-out", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(12) },
+      { id: "ms_o3", jobId: "job_oakwood", title: "Handover", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(2) },
 
-      { id: "ms_r1", jobId: "job_roof", title: "Repair Complete", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(2) },
+      { id: "ms_l1", jobId: "job_lakeside", title: "Materials Delivered", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(3) },
 
-      { id: "ms_b1", jobId: "job_bath", title: "First Fix", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(8) },
+      { id: "ms_dt_1", jobId: "job_downtown", title: "First Fix", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(8) },
 
-      { id: "ms_d1", jobId: "job_drive", title: "Materials Delivered", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(1) },
+      { id: "ms_g_1", jobId: "job_greenfield", title: "Evidence Required (Demo)", evidenceRequired: true, evidenceProvided: false, targetDate: dayIso(1) },
 
-      { id: "ms_c1", jobId: "job_done", title: "Practical Completion", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(60) },
+      { id: "ms_s_1", jobId: "job_seaview", title: "Practical Completion", evidenceRequired: true, evidenceProvided: true, targetDate: dayIso(60) },
     ];
 
+    function invoiceTemplate(id, jobId, number, daysAgo, status, beforeVat, mainContractorAmount, lineItems) {
+      return {
+        id, jobId, number,
+        status, // draft|ready|approved
+        createdAt: dayIso(daysAgo),
+        updatedAt: dayIso(Math.max(0, daysAgo - 1)),
+        clientPaymentBeforeVat: beforeVat,
+        feeVatRate: 20,
+        mainContractorAmount: mainContractorAmount || 0,
+        lineItems: lineItems || [],
+      };
+    }
+
     const invoices = [
-      {
-        id: "inv_hero_1",
-        jobId: "job_hero",
-        number: "INV-00041",
-        createdAt: dayIso(2),
-        updatedAt: dayIso(1),
-        clientPaymentBeforeVat: 15290,
-        feeVatRate: 20,
-        lineItems: [
-          { id: "li_1", payeeId: "pay_oakbeam", category: "contractor", description: "Carpentry (phase 1)", amount: 6200 },
-          { id: "li_2", payeeId: "pay_electrics", category: "contractor", description: "Electrical first fix", amount: 3100 },
-          { id: "li_3", payeeId: "pay_supplies", category: "supplier", description: "Timber + fixings", amount: 1450 },
-        ],
-      },
-      {
-        id: "inv_kext_1",
-        jobId: "job_kext",
-        number: "INV-00052",
-        createdAt: dayIso(5),
-        updatedAt: dayIso(3),
-        clientPaymentBeforeVat: 11800,
-        feeVatRate: 20,
-        lineItems: [
-          { id: "li_k1", payeeId: "pay_supplies", category: "supplier", description: "Blockwork + concrete", amount: 3200 },
-          { id: "li_k2", payeeId: "pay_oakbeam", category: "contractor", description: "Framing + install", amount: 4100 },
-        ],
-      },
-      {
-        id: "inv_roof_1",
-        jobId: "job_roof",
-        number: "INV-00060",
-        createdAt: dayIso(3),
-        updatedAt: dayIso(2),
-        clientPaymentBeforeVat: 2800,
-        feeVatRate: 20,
-        lineItems: [
-          { id: "li_r1", payeeId: "pay_supplies", category: "supplier", description: "Tiles + underlay", amount: 640 },
-          { id: "li_r2", payeeId: "pay_oakbeam", category: "contractor", description: "Labour", amount: 980 },
-        ],
-      },
-      {
-        id: "inv_bath_1",
-        jobId: "job_bath",
-        number: "INV-00058",
-        createdAt: dayIso(10),
-        updatedAt: dayIso(7),
-        clientPaymentBeforeVat: 5400,
-        feeVatRate: 20,
-        lineItems: [
-          { id: "li_b1", payeeId: "pay_supplies", category: "supplier", description: "Bathroom suite", amount: 1600 },
-        ],
-      },
-      {
-        id: "inv_drive_1",
-        jobId: "job_drive",
-        number: "INV-00063",
-        createdAt: dayIso(2),
-        updatedAt: dayIso(1),
-        clientPaymentBeforeVat: 7600,
-        feeVatRate: 20,
-        lineItems: [
-          { id: "li_d1", payeeId: "pay_supplies", category: "supplier", description: "Aggregate + binder", amount: 2100 },
-          { id: "li_d2", payeeId: "pay_oakbeam", category: "contractor", description: "Labour + plant", amount: 2500 },
-        ],
-      },
-      {
-        id: "inv_done_1",
-        jobId: "job_done",
-        number: "INV-00012",
-        createdAt: dayIso(62),
-        updatedAt: dayIso(50),
-        clientPaymentBeforeVat: 9200,
-        feeVatRate: 20,
-        lineItems: [
-          { id: "li_c1", payeeId: "pay_oakbeam", category: "contractor", description: "Joinery", amount: 3000 },
-          { id: "li_c2", payeeId: "pay_supplies", category: "supplier", description: "Paint + consumables", amount: 450 },
-        ],
-      },
+      // Hilltop (8 invoices for tile grid)
+      invoiceTemplate("inv_h_1","job_hilltop","INV-00101",8,"approved",15290, 2800, [
+        { id: "li_h1_1", payeeId: "pay_oakbeam", category: "contractor", description: "Carpentry (phase 1)", amount: 6200 },
+        { id: "li_h1_2", payeeId: "pay_electrics", category: "contractor", description: "Electrical first fix", amount: 3100 },
+        { id: "li_h1_3", payeeId: "pay_supplies", category: "supplier", description: "Timber + fixings", amount: 1450 },
+      ]),
+      invoiceTemplate("inv_h_2","job_hilltop","INV-00102",7,"ready",9800, 1900, [
+        { id: "li_h2_1", payeeId: "pay_oakbeam", category: "contractor", description: "Carpentry (phase 2)", amount: 2400 },
+        { id: "li_h2_2", payeeId: "pay_supplies", category: "supplier", description: "Plasterboard + sundries", amount: 760 },
+      ]),
+      invoiceTemplate("inv_h_3","job_hilltop","INV-00103",6,"draft",6200, 1100, [
+        { id: "li_h3_1", payeeId: "pay_electrics", category: "contractor", description: "Second fix allowance", amount: 900 },
+      ]),
+      invoiceTemplate("inv_h_4","job_hilltop","INV-00104",5,"draft",5400, 900, [
+        { id: "li_h4_1", payeeId: "pay_supplies", category: "supplier", description: "Insulation", amount: 880 },
+      ]),
+      invoiceTemplate("inv_h_5","job_hilltop","INV-00105",4,"draft",4100, 650, []),
+      invoiceTemplate("inv_h_6","job_hilltop","INV-00106",3,"draft",3800, 600, []),
+      invoiceTemplate("inv_h_7","job_hilltop","INV-00107",2,"draft",4600, 750, []),
+      invoiceTemplate("inv_h_8","job_hilltop","INV-00108",1,"draft",5200, 820, []),
+
+      // Oakwood (7 invoices)
+      invoiceTemplate("inv_o_1","job_oakwood","INV-00201",10,"approved",11800, 2100, [
+        { id: "li_o1_1", payeeId: "pay_supplies", category: "supplier", description: "Materials bundle", amount: 3200 },
+        { id: "li_o1_2", payeeId: "pay_oakbeam", category: "contractor", description: "Install crew", amount: 4100 },
+      ]),
+      invoiceTemplate("inv_o_2","job_oakwood","INV-00202",9,"ready",7600, 1400, []),
+      invoiceTemplate("inv_o_3","job_oakwood","INV-00203",8,"draft",6900, 1200, []),
+      invoiceTemplate("inv_o_4","job_oakwood","INV-00204",7,"draft",8300, 1500, []),
+      invoiceTemplate("inv_o_5","job_oakwood","INV-00205",6,"draft",5200, 900, []),
+      invoiceTemplate("inv_o_6","job_oakwood","INV-00206",5,"draft",6100, 1000, []),
+      invoiceTemplate("inv_o_7","job_oakwood","INV-00207",4,"draft",4800, 800, []),
+
+      invoiceTemplate("inv_l_1","job_lakeside","INV-00301",5,"ready",9200, 1800, [
+        { id: "li_l1_1", payeeId: "pay_supplies", category: "supplier", description: "Fixtures shipment", amount: 2600 },
+      ]),
+      invoiceTemplate("inv_dt_1","job_downtown","INV-00401",7,"draft",5400, 900, [
+        { id: "li_dt_1", payeeId: "pay_oakbeam", category: "contractor", description: "Labour", amount: 1600 },
+      ]),
+      invoiceTemplate("inv_g_1","job_greenfield","INV-00501",2,"draft",7600, 1500, [
+        { id: "li_g1_1", payeeId: "pay_supplies", category: "supplier", description: "Aggregate + binder", amount: 2100 },
+      ]),
+      invoiceTemplate("inv_s_1","job_seaview","INV-00012",60,"approved",9200, 1800, [
+        { id: "li_s1_1", payeeId: "pay_oakbeam", category: "contractor", description: "Joinery", amount: 3000 },
+        { id: "li_s1_2", payeeId: "pay_supplies", category: "supplier", description: "Paint + consumables", amount: 450 },
+      ]),
     ];
 
     const releases = [
       {
-        id: "rel_hero_1",
-        jobId: "job_hero",
-        invoiceId: "inv_hero_1",
-        milestoneId: "ms_struct",
+        id: "rel_h_1",
+        jobId: "job_hilltop",
+        invoiceId: "inv_h_1",
+        milestoneId: "ms_h2",
         title: "Release — Structure stage",
-        status: "Submitted",
-        approvals: { manager: false, client: false },
+        status: "Client approved",
+        approvals: { manager: true, client: true },
         sentToPartnerAt: null,
         releasedAt: null,
-        createdAt: dayIso(2),
-        updatedAt: dayIso(1),
+        createdAt: dayIso(8),
+        updatedAt: dayIso(7),
         payeeSplits: [
           { payeeId: "pay_oakbeam", amount: 3000 },
           { payeeId: "pay_electrics", amount: 1400 },
           { payeeId: "pay_supplies", amount: 900 },
         ],
-        notes: "Stage release for structure milestone.",
+        notes: "Ready to send (demo).",
       },
       {
-        id: "rel_hero_2",
-        jobId: "job_hero",
-        invoiceId: "inv_hero_1",
-        milestoneId: "ms_first",
+        id: "rel_h_2",
+        jobId: "job_hilltop",
+        invoiceId: "inv_h_2",
+        milestoneId: "ms_h3",
         title: "Release — First fix stage",
-        status: "Draft",
-        approvals: { manager: false, client: false },
-        sentToPartnerAt: null,
-        releasedAt: null,
-        createdAt: dayIso(1),
-        updatedAt: dayIso(1),
-        payeeSplits: [
-          { payeeId: "pay_oakbeam", amount: 2200 },
-          { payeeId: "pay_electrics", amount: 900 },
-        ],
-        notes: "Draft release awaiting submission.",
-      },
-      {
-        id: "rel_kext_1",
-        jobId: "job_kext",
-        invoiceId: "inv_kext_1",
-        milestoneId: "ms_k2",
-        title: "Release — Shell stage",
-        status: "Manager approved",
-        approvals: { manager: true, client: false },
-        sentToPartnerAt: null,
-        releasedAt: null,
-        createdAt: dayIso(5),
-        updatedAt: dayIso(3),
-        payeeSplits: [
-          { payeeId: "pay_supplies", amount: 1400 },
-          { payeeId: "pay_oakbeam", amount: 1900 },
-        ],
-        notes: "Awaiting client approval.",
-      },
-      {
-        id: "rel_roof_1",
-        jobId: "job_roof",
-        invoiceId: "inv_roof_1",
-        milestoneId: "ms_r1",
-        title: "Release — Roof repair",
-        status: "Draft",
-        approvals: { manager: false, client: false },
-        sentToPartnerAt: null,
-        releasedAt: null,
-        createdAt: dayIso(2),
-        updatedAt: dayIso(2),
-        payeeSplits: [
-          { payeeId: "pay_supplies", amount: 500 },
-          { payeeId: "pay_oakbeam", amount: 800 },
-        ],
-        notes: "Evidence missing for milestone (demo blocker).",
-      },
-      {
-        id: "rel_drive_1",
-        jobId: "job_drive",
-        invoiceId: "inv_drive_1",
-        milestoneId: "ms_d1",
-        title: "Release — Materials delivery",
         status: "Submitted",
         approvals: { manager: false, client: false },
         sentToPartnerAt: null,
         releasedAt: null,
-        createdAt: dayIso(1),
-        updatedAt: dayIso(1),
+        createdAt: dayIso(3),
+        updatedAt: dayIso(2),
         payeeSplits: [
-          { payeeId: "pay_supplies", amount: 1200 },
+          { payeeId: "pay_oakbeam", amount: 2200 },
+          { payeeId: "pay_electrics", amount: 900 },
         ],
         notes: "Submitted for approvals.",
       },
       {
-        id: "rel_done_1",
-        jobId: "job_done",
-        invoiceId: "inv_done_1",
-        milestoneId: "ms_c1",
+        id: "rel_h_3",
+        jobId: "job_hilltop",
+        invoiceId: "inv_h_3",
+        milestoneId: "ms_h3",
+        title: "Release — Electrical works",
+        status: "Manager approved",
+        approvals: { manager: true, client: false },
+        sentToPartnerAt: null,
+        releasedAt: null,
+        createdAt: dayIso(2),
+        updatedAt: dayIso(1),
+        payeeSplits: [
+          { payeeId: "pay_electrics", amount: 700 },
+        ],
+        notes: "Awaiting client approval.",
+      },
+      {
+        id: "rel_o_1",
+        jobId: "job_oakwood",
+        invoiceId: "inv_o_2",
+        milestoneId: "ms_o2",
+        title: "Release — Fit-out stage",
+        status: "Sent to partner",
+        approvals: { manager: true, client: true },
+        sentToPartnerAt: dayIso(6),
+        releasedAt: null,
+        createdAt: dayIso(7),
+        updatedAt: dayIso(6),
+        payeeSplits: [
+          { payeeId: "pay_supplies", amount: 1200 },
+          { payeeId: "pay_oakbeam", amount: 1600 },
+        ],
+        notes: "Sent to partner (demo).",
+      },
+      {
+        id: "rel_l_1",
+        jobId: "job_lakeside",
+        invoiceId: "inv_l_1",
+        milestoneId: "ms_l1",
+        title: "Release — Materials",
+        status: "Released",
+        approvals: { manager: true, client: true },
+        sentToPartnerAt: dayIso(4),
+        releasedAt: dayIso(4),
+        createdAt: dayIso(5),
+        updatedAt: dayIso(4),
+        payeeSplits: [
+          { payeeId: "pay_supplies", amount: 1000 },
+        ],
+        notes: "Released (demo).",
+      },
+      {
+        id: "rel_g_1",
+        jobId: "job_greenfield",
+        invoiceId: "inv_g_1",
+        milestoneId: "ms_g_1",
+        title: "Release — Blocked by evidence",
+        status: "Client approved",
+        approvals: { manager: true, client: true },
+        sentToPartnerAt: null,
+        releasedAt: null,
+        createdAt: dayIso(2),
+        updatedAt: dayIso(1),
+        payeeSplits: [
+          { payeeId: "pay_supplies", amount: 1200 },
+        ],
+        notes: "Evidence missing on milestone (demo blocker).",
+      },
+      {
+        id: "rel_s_1",
+        jobId: "job_seaview",
+        invoiceId: "inv_s_1",
+        milestoneId: "ms_s_1",
         title: "Release — Completion",
         status: "Released",
         approvals: { manager: true, client: true },
@@ -435,39 +664,40 @@
           { payeeId: "pay_oakbeam", amount: 2800 },
           { payeeId: "pay_supplies", amount: 420 },
         ],
-        notes: "Completed release (demo).",
+        notes: "Completed (demo).",
       },
     ];
 
     const disputes = [
       {
-        id: "dis_hero_1",
-        jobId: "job_hero",
+        id: "dis_h_1",
+        jobId: "job_hilltop",
         title: "Client query: scope clarification",
         status: "open",
         pauseRelease: true,
-        createdAt: dayIso(4),
-        updatedAt: dayIso(1),
+        createdAt: dayIso(6),
+        updatedAt: dayIso(2),
         timeline: [
-          { ts: dayIso(4), byRole: "client", type: "opened", text: "Query on whether second fix includes additional sockets." },
-          { ts: dayIso(2), byRole: "manager", type: "comment", text: "Explained allowance. Awaiting confirmation." },
+          { ts: dayIso(6), byRole: "client", type: "opened", text: "Query on scope for second fix and extras." },
+          { ts: dayIso(4), byRole: "manager", type: "comment", text: "Provided allowance details. Awaiting confirmation." },
         ],
       },
     ];
 
     const messages = [
-      { id: "msg_hero_1", threadId: "thr_job_hero", jobId: "job_hero", ts: dayIso(3), byRole: "manager", text: "Kick-off: milestones and payment approvals will be tracked here.", attachments: [] },
-      { id: "msg_hero_2", threadId: "thr_job_hero", jobId: "job_hero", ts: dayIso(2), byRole: "client", text: "Thanks — please keep me posted before releases are sent.", attachments: [] },
-      { id: "msg_kext_1", threadId: "thr_job_kext", jobId: "job_kext", ts: dayIso(4), byRole: "manager", text: "Shell stage ready for sign-off once you review photos.", attachments: [] },
+      { id: "msg_h_1", threadId: "thr_job_hilltop", jobId: "job_hilltop", ts: dayIso(7), byRole: "manager", text: "Welcome — approvals and invoices will be tracked here.", attachments: [] },
+      { id: "msg_h_2", threadId: "thr_job_hilltop", jobId: "job_hilltop", ts: dayIso(6), byRole: "client", text: "Thanks — please notify me before sending releases.", attachments: [] },
+      { id: "msg_o_1", threadId: "thr_job_oakwood", jobId: "job_oakwood", ts: dayIso(8), byRole: "manager", text: "Invoice tiles are ready for this job (demo).", attachments: [] },
     ];
 
     const auditLog = [
-      { id: uid("aud"), ts: dayIso(2), actorRole: "manager", action: "seed_demo", entityType: "db", entityId: "root", jobId: null, details: { note: "Initial seed" } },
+      { id: uid("aud"), ts: dayIso(2), actorRole: "manager", action: "seed_demo", entityType: "db", entityId: "root", jobId: null, details: { schemaVersion: SCHEMA_VERSION } },
     ];
 
     return {
       schemaVersion: SCHEMA_VERSION,
-      meta: { seededAt: nowIso(), lastResetReason: "" },
+      meta: { seededAt: nowIso(), lastResetReason: "", testMode: false },
+      company,
       payees,
       jobs,
       milestones,
@@ -484,6 +714,7 @@
      Audit log
   --------------------------- */
   function log(action, entityType, entityId, jobId, details = {}) {
+    if (!db) return;
     db.auditLog.unshift({
       id: uid("aud"),
       ts: nowIso(),
@@ -509,7 +740,7 @@
     const id = uid("toast");
     const pill = kind === "bad" ? "bad" : kind === "warn" ? "warn" : kind === "ok" ? "ok" : "info";
 
-    const html = `
+    root.insertAdjacentHTML("afterbegin", `
       <div class="toast" data-toast-id="${id}">
         <div>
           <div class="t-title"><span class="pill ${pill}">${escapeHtml(kind.toUpperCase())}</span> ${escapeHtml(title)}</div>
@@ -517,9 +748,7 @@
         </div>
         <button class="icon-btn" type="button" data-action="toast-close" data-toast-id="${id}" aria-label="Dismiss">✕</button>
       </div>
-    `;
-
-    root.insertAdjacentHTML("afterbegin", html);
+    `);
 
     const items = $$(".toast", root);
     for (let i = TOASTS_MAX; i < items.length; i++) items[i].remove();
@@ -613,7 +842,6 @@
         return;
       }
 
-      // modal actions flow through normal handler
       handleAction(action, el.dataset, { inModal: true });
     });
 
@@ -647,19 +875,17 @@
   /* ---------------------------
      Router (hash only)
   --------------------------- */
-  function routeTo(hash) {
-    window.location.hash = hash;
-  }
+  function routeTo(hash) { window.location.hash = hash; }
 
   function ensureDefaultHash() {
     if (!window.location.hash || window.location.hash === "#") {
-      window.location.hash = "#/jobs";
+      window.location.hash = "#/dashboard";
     }
   }
 
   function parseRoute() {
     let h = window.location.hash || "";
-    if (!h || h === "#") return { path: "/jobs", params: {}, query: {} };
+    if (!h || h === "#") return { path: "/dashboard", params: {}, query: {} };
 
     if (h.startsWith("#")) h = h.slice(1);
     const [rawPath, rawQs] = h.split("?");
@@ -672,10 +898,10 @@
     const seg = path.split("/").filter(Boolean);
     const out = { path, params: {}, query: query || {} };
 
+    if (seg.length === 1 && seg[0] === "dashboard") return out;
     if (seg.length === 1 && seg[0] === "jobs") return out;
     if (seg.length === 2 && seg[0] === "jobs") { out.params.jobId = seg[1]; return out; }
     if (seg.length === 2 && seg[0] === "invoices") { out.params.invoiceId = seg[1]; return out; }
-
     if (seg.length === 1 && ["payments","approvals","disputes","messages","company","reports","settings"].includes(seg[0])) return out;
 
     return { path: "/notfound", params: {}, query: {} };
@@ -702,7 +928,6 @@
   }
 
   function cycleTheme() {
-    // system -> light -> dark -> system
     const next = ui.theme === "system" ? "light" : (ui.theme === "light" ? "dark" : "system");
     applyThemePref(next);
     toast("info", "Theme", `Theme set to ${next}.`);
@@ -713,7 +938,7 @@
     if (!ROLE_PERMS[role]) role = "manager";
     ui.role = role;
     localStorage.setItem("approvehub_role", role);
-    toast("info", "Role switched", `You are now viewing as ${ROLE_LABEL[role] || role}.`);
+    toast("info", "Role switched", `Now viewing as ${ROLE_LABEL[role] || role}.`);
     log("set_role", "ui", "role", null, { role });
 
     updateNavVisibility();
@@ -721,37 +946,41 @@
     render();
   }
 
+  function setTestMode(on) {
+    if (!perms().canToggleTestMode) {
+      toast("bad", "Not allowed", "Only Admin can toggle Test Mode.");
+      return;
+    }
+    db.meta.testMode = !!on;
+    saveDb();
+    toast("ok", "Test Mode", db.meta.testMode ? "Test Mode is ON." : "Test Mode is OFF.");
+    log("toggle_test_mode", "meta", "testMode", null, { testMode: db.meta.testMode });
+    render();
+  }
+
   /* ---------------------------
-     Approvals inbox (used by Approvals + Notifications)
+     Approvals inbox items
   --------------------------- */
   function approvalsInboxItems() {
-  const items = [];
+    const items = [];
 
-  // bank confirmations
-  for (const p of (db?.payees || [])) {
-    if (p && p.bankChanged && !p.bankConfirmed) {
-      items.push({ type: "bank", id: p.id, label: `Confirm bank details: ${p.name}` });
+    for (const p of (db?.payees || [])) {
+      if (p && p.bankChanged && !p.bankConfirmed) {
+        items.push({ type: "bank", id: p.id, label: `Confirm bank details: ${p.name}` });
+      }
     }
+
+    for (const r of (db?.releases || [])) {
+      if (!r) continue;
+      const a = r.approvals || { manager: false, client: false };
+
+      if (r.status === "Submitted" && !a.manager) items.push({ type: "release_mgr", id: r.id, label: `Approve release (Manager): ${r.title}` });
+      if (r.status === "Manager approved" && !a.client) items.push({ type: "release_client", id: r.id, label: `Approve release (Client): ${r.title}` });
+      if (r.status === "Client approved") items.push({ type: "release_ready", id: r.id, label: `Ready to send: ${r.title}` });
+    }
+
+    return items;
   }
-
-  // release approvals + ready to send
-  for (const r of (db?.releases || [])) {
-    if (!r) continue;
-    const a = r.approvals || { manager: false, client: false };
-
-    if (r.status === "Submitted" && !a.manager) {
-      items.push({ type: "release_mgr", id: r.id, label: `Approve release (Manager): ${r.title}` });
-    }
-    if (r.status === "Manager approved" && !a.client) {
-      items.push({ type: "release_client", id: r.id, label: `Approve release (Client): ${r.title}` });
-    }
-    if (r.status === "Client approved") {
-      items.push({ type: "release_ready", id: r.id, label: `Ready to send: ${r.title}` });
-    }
-  }
-
-  return items;
-}
 
   function countApprovalsForRole(role) {
     const p = ROLE_PERMS[role] || ROLE_PERMS.manager;
@@ -798,13 +1027,13 @@
           </div>
         `).join("")}
       </div>
-    ` : `<div class="banner info">No items needing action for this role right now.</div>`;
+    ` : `<div class="card"><div class="card-title">All caught up</div><div class="card-sub">No items needing action for this role.</div></div>`;
 
     openModal({
       title: "Notifications",
-      ariaLabel: "Notifications and approvals",
+      ariaLabel: "Notifications",
       bodyHtml: rows,
-      footerHtml: `<div class="muted">Tip: use Roles to preview different inboxes.</div><button class="btn" type="button" data-action="modal-close">Close</button>`
+      footerHtml: `<div class="muted">Tip: switch roles to preview different inboxes.</div><button class="btn" type="button" data-action="modal-close">Close</button>`
     });
   }
 
@@ -821,36 +1050,38 @@
     const hits = [];
 
     for (const j of db.jobs) {
-      if ((j.name || "").toLowerCase().includes(query) || j.id.toLowerCase().includes(query)) {
-        hits.push({ type: "Job", tag: j.id, label: j.name, href: `#/jobs/${j.id}` });
+      const name = (j.name || "").toLowerCase();
+      const loc = (j.location || "").toLowerCase();
+      if (name.includes(query) || loc.includes(query) || j.id.toLowerCase().includes(query)) {
+        hits.push({ type: "Job", tag: j.location || "", label: j.name, href: `#/jobs/${j.id}` });
       }
     }
 
     for (const inv of db.invoices) {
-      if ((inv.number || "").toLowerCase().includes(query) || inv.id.toLowerCase().includes(query)) {
+      const num = (inv.number || "").toLowerCase();
+      if (num.includes(query) || inv.id.toLowerCase().includes(query)) {
         const job = getJob(inv.jobId);
         hits.push({ type: "Invoice", tag: inv.number, label: job ? job.name : inv.jobId, href: `#/invoices/${inv.id}` });
       }
     }
 
     for (const p of db.payees) {
-      if ((p.name || "").toLowerCase().includes(query) || p.id.toLowerCase().includes(query)) {
+      const nm = (p.name || "").toLowerCase();
+      if (nm.includes(query) || p.id.toLowerCase().includes(query)) {
         hits.push({ type: "Payee", tag: p.type, label: p.name, href: `#/company?payee=${encodeURIComponent(p.id)}` });
       }
     }
 
     const sliced = hits.slice(0, 8);
     if (!sliced.length) {
-      pop.innerHTML = `<div class="pop-item"><div><div class="card-title">No results</div><div class="muted">Try “Loft”, “INV-”, or a payee name.</div></div></div>`;
+      pop.innerHTML = `<div class="pop-item"><div><div class="card-title">No results</div><div class="muted">Try “Oakwood”, “INV-”, or a payee name.</div></div></div>`;
       pop.hidden = false;
       return;
     }
 
     pop.innerHTML = sliced.map(h => `
       <a class="pop-item" href="${escapeHtml(h.href)}">
-        <div style="min-width:82px">
-          <span class="pill info">${escapeHtml(h.type)}</span>
-        </div>
+        <div style="min-width:82px"><span class="pill info">${escapeHtml(h.type)}</span></div>
         <div>
           <div class="card-title">${escapeHtml(h.label)}</div>
           <div class="muted">${escapeHtml(h.tag)}</div>
@@ -871,14 +1102,12 @@
       roleSel.value = ui.role;
       roleSel.addEventListener("change", () => setRole(roleSel.value));
     }
-
     if (themeBtn) themeBtn.addEventListener("click", () => cycleTheme());
     if (notifBtn) notifBtn.addEventListener("click", () => openNotifications());
 
     if (search && pop) {
       search.addEventListener("input", () => renderSearchPopover(search.value));
       search.addEventListener("focus", () => renderSearchPopover(search.value));
-
       document.addEventListener("click", (e) => {
         const within = e.target.closest(".search");
         if (!within) { pop.hidden = true; pop.innerHTML = ""; }
@@ -886,6 +1115,9 @@
     }
   }
 
+  /* CONTINUES IN PART 4 */
+// PART 3 END
+ // PART 4 START
   /* ---------------------------
      Nav visibility + counts
   --------------------------- */
@@ -897,7 +1129,10 @@
     for (const a of $$(".nav-item", nav)) {
       const route = a.getAttribute("data-route") || "";
       const show = allowed.has(route);
-      a.classList.toggle("hidden", !show);
+
+      // hard hide so it works even if CSS changes
+      a.style.display = show ? "" : "none";
+
       if (!show) {
         a.setAttribute("aria-hidden", "true");
         a.setAttribute("tabindex", "-1");
@@ -911,7 +1146,7 @@
   function setNavActive() {
     const nav = $("#sideNav");
     if (!nav) return;
-    const seg = (ui.route.path.split("/").filter(Boolean)[0] || "jobs");
+    const seg = (ui.route.path.split("/").filter(Boolean)[0] || "dashboard");
     for (const a of $$(".nav-item", nav)) {
       const r = a.getAttribute("data-route");
       a.classList.toggle("active", r === seg);
@@ -926,12 +1161,20 @@
     el.hidden = num <= 0;
   }
 
+  function updateHeaderBadges() {
+    const badge = $("#notifBadge");
+    if (!badge) return;
+    const n = countApprovalsForRole(ui.role);
+    badge.textContent = String(n);
+    badge.hidden = n <= 0;
+  }
+
   function updateNavCounts() {
     const openJobs = db.jobs.filter(j => !j.archived && j.status !== "completed").length;
     setCount("#navCountJobs", openJobs);
 
-    const openReleases = db.releases.filter(r => r.status !== "Released").length;
-    setCount("#navCountPayments", openReleases);
+    const activeReleases = db.releases.filter(r => r.status !== "Released").length;
+    setCount("#navCountPayments", activeReleases);
 
     const appr = countApprovalsForRole(ui.role);
     setCount("#navCountApprovals", appr);
@@ -939,59 +1182,50 @@
     const openDisputes = db.disputes.filter(d => d.status === "open").length;
     setCount("#navCountDisputes", openDisputes);
 
-    const recent = db.messages.filter(m => new Date(m.ts).getTime() > Date.now() - 3*86400000);
-    const msgCount = recent.filter(m => m.byRole !== ui.role).length;
-    setCount("#navCountMessages", msgCount);
+    const recentOtherMsgs = db.messages.filter(m => new Date(m.ts).getTime() > Date.now() - 3*86400000)
+      .filter(m => m.byRole !== ui.role).length;
+    setCount("#navCountMessages", recentOtherMsgs);
 
-    const badge = $("#notifBadge");
-    if (badge) {
-      const n = countApprovalsForRole(ui.role);
-      badge.textContent = String(n);
-      badge.hidden = n <= 0;
-    }
+    updateHeaderBadges();
   }
 
-  /* CONTINUES IN PART 4 */
-// PART 3 END
- // PART 4 START
+  function renderTestModeBadge() {
+    // we render a small badge in header-right by toggling a class on body
+    document.body.classList.toggle("test-mode", !!db.meta.testMode);
+  }
+
   /* ---------------------------
-     Release blockers (reasons)
+     Release blockers
   --------------------------- */
   function releaseBlockers(release) {
     const reasons = [];
-    const job = getJob(release.jobId);
 
-    // approvals required
-    if (!release.approvals?.manager) reasons.push("Manager approval is required.");
-    if (!release.approvals?.client) reasons.push("Client approval is required.");
+    if (!release?.approvals?.manager) reasons.push("Manager approval is required.");
+    if (!release?.approvals?.client) reasons.push("Client approval is required.");
 
-    // bank confirmations
     const payeeIds = (release.payeeSplits || []).map(s => s.payeeId);
     const affected = db.payees.filter(p => payeeIds.includes(p.id) && p.bankChanged && !p.bankConfirmed);
     if (affected.length) reasons.push(`Bank details changed and not confirmed: ${affected.map(p => p.name).join(", ")}.`);
 
-    // dispute pause
     const activePause = db.disputes.some(d => d.jobId === release.jobId && d.pauseRelease && d.status !== "closed");
     if (activePause) reasons.push("A dispute is pausing releases for this job.");
 
-    // evidence required
     if (release.milestoneId) {
       const ms = getMilestone(release.milestoneId);
       if (ms && ms.evidenceRequired && !ms.evidenceProvided) reasons.push(`Evidence missing for milestone: ${ms.title}.`);
     }
 
-    if (!job) reasons.push("Job not found for this release (demo data error).");
     return reasons;
   }
 
   /* ---------------------------
-     Render (router -> #view)
+     Rendering (router -> #view)
   --------------------------- */
   function render() {
-    // safer nav hiding (also hide via inline style even if CSS missing)
     updateNavVisibility();
     setNavActive();
     updateNavCounts();
+    renderTestModeBadge();
 
     const view = $("#view");
     if (!view) return;
@@ -999,7 +1233,8 @@
     const { path, params, query } = ui.route;
 
     let html = "";
-    if (path === "/jobs") html = renderJobs(query);
+    if (path === "/dashboard") html = renderDashboard(query);
+    else if (path === "/jobs") html = renderJobs(query);
     else if (path.startsWith("/jobs/")) html = renderJobDetail(params.jobId, query);
     else if (path.startsWith("/invoices/")) html = renderInvoiceDetail(params.invoiceId);
     else if (path === "/payments") html = renderPayments(query);
@@ -1025,40 +1260,206 @@
             <div class="card-title">Not found</div>
             <div class="card-sub">That page doesn’t exist in this demo.</div>
           </div>
-          <a class="btn primary" href="#/jobs">Go to Jobs</a>
+          <a class="btn primary" href="#/dashboard">Go to Dashboard</a>
         </div>
       </div>
     `;
   }
 
   /* ---------------------------
-     Override nav visibility (ensures hiding works)
+     Helpers for dashboard metrics
   --------------------------- */
-  function updateNavVisibility() {
-    const allowed = new Set(perms().nav || []);
-    const nav = $("#sideNav");
-    if (!nav) return;
-
-    for (const a of $$(".nav-item", nav)) {
-      const route = a.getAttribute("data-route") || "";
-      const show = allowed.has(route);
-
-      // hard hide (works even if .hidden CSS missing)
-      a.style.display = show ? "" : "none";
-
-      if (!show) {
-        a.setAttribute("aria-hidden", "true");
-        a.setAttribute("tabindex", "-1");
-      } else {
-        a.removeAttribute("aria-hidden");
-        a.removeAttribute("tabindex");
-      }
-    }
+  function releaseCountsForJob(job) {
+    const rels = jobReleases(job);
+    const approved = rels.filter(r => ["Client approved","Sent to partner","Released"].includes(r.status)).length;
+    const pending = rels.filter(r => ["Submitted","Manager approved"].includes(r.status)).length;
+    return { approved, pending };
   }
 
+  function milestoneProgress(job) {
+    const ms = jobMilestones(job);
+    const required = ms.filter(m => m.evidenceRequired);
+    if (!required.length) return 100;
+    const done = required.filter(m => m.evidenceProvided).length;
+    return Math.round((done / required.length) * 100);
+  }
+
+  function approvedInvoicesCount(job) {
+    const invs = jobInvoices(job);
+    return invs.filter(i => i.status === "approved").length;
+  }
+
+  function savingsTotalsAllJobs() {
+    let total = 0;
+    const byJob = {};
+
+    for (const inv of db.invoices) {
+      const t = invoiceTotals(inv);
+      const diff = t.illustrativeDiff;
+      total += diff;
+
+      byJob[inv.jobId] = byJob[inv.jobId] || [];
+      byJob[inv.jobId].push({ invoiceId: inv.id, number: inv.number, diff });
+    }
+
+    return { total: Math.round(total * 100) / 100, byJob };
+  }
+
+  /* CONTINUES IN PART 5 */
+// PART 4 END
+
+ // PART 5 START
   /* ---------------------------
-     Pages
+     Pages — Dashboard / Jobs / Job Detail (Invoices Grid + Payment Plan)
   --------------------------- */
+  function renderDashboard(query) {
+    const tab = (query.tab || "all").toLowerCase(); // all | open | archived
+    const jobsAll = db.jobs.slice().sort((a,b) => (a.updatedAt > b.updatedAt ? -1 : 1));
+    const jobsOpen = jobsAll.filter(j => !j.archived && j.status !== "completed");
+    const jobsArchived = jobsAll.filter(j => j.archived);
+    const jobsCompleted = jobsAll.filter(j => !j.archived && j.status === "completed");
+
+    const list = tab === "open" ? jobsOpen : (tab === "archived" ? jobsArchived : jobsAll.filter(j => j.status !== "completed"));
+
+    const testBanner = db.meta.testMode ? `
+      <div class="card" style="border-color: rgba(240,207,99,.55); background: rgba(240,207,99,.14);">
+        <div class="split">
+          <div>
+            <div class="card-title">TEST MODE is ON</div>
+            <div class="card-sub">All actions are simulated. No funds move in this demo.</div>
+          </div>
+          <span class="pill warn">TEST MODE</span>
+        </div>
+      </div>
+    ` : "";
+
+    const tabs = `
+      <div class="tabs" role="tablist" aria-label="Dashboard job tabs">
+        <a class="tab ${tab==="all"?"active":""}" role="tab" href="#/dashboard?tab=all">All Jobs</a>
+        <a class="tab ${tab==="open"?"active":""}" role="tab" href="#/dashboard?tab=open">Open Jobs</a>
+        <a class="tab ${tab==="archived"?"active":""}" role="tab" href="#/dashboard?tab=archived">Archived</a>
+      </div>
+    `;
+
+    const actions = `
+      <div class="hstack">
+        <button class="btn" data-action="open-savings">Savings</button>
+        <button class="btn primary" data-action="create-job">+ New Job</button>
+      </div>
+    `;
+
+    const jobCards = list.length ? `
+      <div class="job-grid" aria-label="Jobs grid">
+        ${list.map(j => {
+          const rc = releaseCountsForJob(j);
+          const prog = milestoneProgress(j);
+          const progW = clamp(prog,0,100);
+          return `
+            <a class="job-card" href="#/jobs/${escapeHtml(j.id)}?tab=invoices" aria-label="Open job ${escapeHtml(j.name)}">
+              <div class="job-name">${escapeHtml(j.name)}</div>
+              <div class="job-loc">${escapeHtml(j.location || j.address || "")}</div>
+
+              <div class="job-stats">
+                <span class="chip ok">Approved ${rc.approved}</span>
+                <span class="chip warn">Pending ${rc.pending}</span>
+              </div>
+
+              <div class="progress" aria-label="Progress">
+                <span style="width:${progW}%;"></span>
+              </div>
+
+              <div class="muted" style="margin-top:10px; font-size:12px;">
+                Evidence progress: <strong>${progW}%</strong>
+              </div>
+            </a>
+          `;
+        }).join("")}
+      </div>
+    ` : `<div class="card"><div class="card-title">No jobs</div><div class="card-sub">Try another tab.</div></div>`;
+
+    const completedList = jobsCompleted.length ? `
+      <div class="vstack">
+        ${jobsCompleted.slice(0,3).map(j => `
+          <div class="card">
+            <div class="split">
+              <div>
+                <div class="card-title">${escapeHtml(j.name)}</div>
+                <div class="card-sub">${escapeHtml(j.location || "")}</div>
+              </div>
+              <span class="pill ok">Completed</span>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    ` : `<div class="card"><div class="card-title">No completed projects</div><div class="card-sub">Completed jobs will appear here.</div></div>`;
+
+    const companyWidget = `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Company Details</div>
+            <div class="card-sub">Quick view (edit in Company page)</div>
+          </div>
+          <a class="btn" href="#/company">Edit</a>
+        </div>
+
+        <div class="grid cols-2">
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">Company</div>
+            <div style="font-weight:800; margin-top:6px;">${escapeHtml(db.company.companyName)}</div>
+            <div class="muted" style="margin-top:6px;">VAT: ${escapeHtml(db.company.vatNumber)}</div>
+          </div>
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">Contact</div>
+            <div style="font-weight:800; margin-top:6px;">${escapeHtml(db.company.phoneNumber)}</div>
+            <div class="muted" style="margin-top:6px;">${escapeHtml(db.company.companyAddress)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return `
+      <div class="vstack">
+        ${testBanner}
+
+        <div class="split">
+          <div>
+            <div class="page-title">Dashboard</div>
+            <div class="muted">Quick overview of jobs, invoices, approvals and company details.</div>
+          </div>
+          ${actions}
+        </div>
+
+        <div class="card">
+          <div class="split">
+            <div class="section-title">Your Jobs</div>
+            ${tabs}
+          </div>
+          <div class="sep"></div>
+          ${jobCards}
+        </div>
+
+        <div class="grid cols-2">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Completed Projects</div>
+                <div class="card-sub">Drag zone is visual only (demo).</div>
+              </div>
+            </div>
+
+            <div class="grid cols-2">
+              <div>${completedList}</div>
+              <div class="dropzone" aria-label="Completed projects dropzone">Drag jobs here…</div>
+            </div>
+          </div>
+
+          ${companyWidget}
+        </div>
+      </div>
+    `;
+  }
+
   function renderJobs(query) {
     const tab = (query.tab || "open").toLowerCase(); // open | archived | completed
     const canCreate = perms().canCreateJob;
@@ -1067,75 +1468,72 @@
     const open = db.jobs.filter(j => !j.archived && j.status !== "completed");
     const archived = db.jobs.filter(j => j.archived);
     const completed = db.jobs.filter(j => !j.archived && j.status === "completed");
-
     const list = tab === "archived" ? archived : (tab === "completed" ? completed : open);
 
-    const tiles = `
-      <div class="grid cols-3">
-        <div class="kpi"><div class="kpi-v">${open.length}</div><div class="kpi-l">Open jobs</div></div>
-        <div class="kpi"><div class="kpi-v">${db.releases.filter(r => r.status !== "Released").length}</div><div class="kpi-l">Active releases</div></div>
-        <div class="kpi"><div class="kpi-v">${db.disputes.filter(d => d.status === "open").length}</div><div class="kpi-l">Open disputes</div></div>
-      </div>
-    `;
-
     const tabs = `
-      <div class="hstack">
-        <a class="btn ${tab==="open"?"primary":"ghost"}" href="#/jobs?tab=open">Open</a>
-        <a class="btn ${tab==="completed"?"primary":"ghost"}" href="#/jobs?tab=completed">Completed</a>
-        <a class="btn ${tab==="archived"?"primary":"ghost"}" href="#/jobs?tab=archived">Archived</a>
+      <div class="tabs" role="tablist" aria-label="Jobs tabs">
+        <a class="tab ${tab==="open"?"active":""}" role="tab" href="#/jobs?tab=open">Open</a>
+        <a class="tab ${tab==="completed"?"active":""}" role="tab" href="#/jobs?tab=completed">Completed</a>
+        <a class="tab ${tab==="archived"?"active":""}" role="tab" href="#/jobs?tab=archived">Archived</a>
       </div>
     `;
 
     const actions = `
       <div class="hstack">
-        ${canCreate ? `<button class="btn primary" data-action="create-job">Create job</button>` : ``}
+        ${canCreate ? `<button class="btn primary" data-action="create-job">+ New Job</button>` : ``}
         ${canExport ? `<button class="btn" data-action="export-db">Export JSON</button>` : ``}
         ${perms().canImport ? `<button class="btn" data-action="import-db">Import JSON</button>` : ``}
       </div>
     `;
 
-    const rows = list.length ? `
-      <table class="table">
-        <thead>
-          <tr><th>Job</th><th>Status</th><th>Client</th><th>Updated</th><th></th></tr>
-        </thead>
-        <tbody>
-          ${list.map(j => `
-            <tr>
-              <td>
-                <div><strong>${escapeHtml(j.name)}</strong></div>
-                <div class="muted">${escapeHtml(j.address)}</div>
-              </td>
-              <td><span class="pill ${j.status==="completed"?"ok":"info"}">${escapeHtml(j.archived ? "Archived" : j.status)}</span></td>
-              <td>${escapeHtml(j.clientName)}</td>
-              <td>${escapeHtml(formatDate(j.updatedAt))}</td>
-              <td><a class="btn primary" href="#/jobs/${escapeHtml(j.id)}">Open</a></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    ` : `<div class="banner info">No jobs in this tab.</div>`;
+    const cards = list.length ? `
+      <div class="grid cols-2">
+        ${list.map(j => {
+          const rc = releaseCountsForJob(j);
+          const prog = milestoneProgress(j);
+          return `
+            <a class="card" href="#/jobs/${escapeHtml(j.id)}?tab=invoices" style="display:block; text-decoration:none;">
+              <div class="split">
+                <div>
+                  <div class="card-title">${escapeHtml(j.name)}</div>
+                  <div class="card-sub">${escapeHtml(j.location || j.address || "")}</div>
+                </div>
+                <span class="pill ${j.status==="completed"?"ok":(j.archived?"warn":"info")}">${escapeHtml(j.archived?"Archived":j.status)}</span>
+              </div>
+              <div class="sep"></div>
+              <div class="hstack">
+                <span class="pill ok">Approved ${rc.approved}</span>
+                <span class="pill warn">Pending ${rc.pending}</span>
+                <span class="pill info">${approvedInvoicesCount(j)} Approved invoices</span>
+              </div>
+              <div class="progress" aria-label="Evidence progress">
+                <span style="width:${clamp(prog,0,100)}%;"></span>
+              </div>
+              <div class="muted" style="margin-top:10px;">Updated ${escapeHtml(formatDate(j.updatedAt))}</div>
+            </a>
+          `;
+        }).join("")}
+      </div>
+    ` : `<div class="card"><div class="card-title">No jobs</div><div class="card-sub">Nothing to show in this tab.</div></div>`;
 
     return `
-      <div class="card">
-        <div class="card-header">
+      <div class="vstack">
+        <div class="split">
           <div>
-            <div class="card-title">Jobs</div>
-            <div class="card-sub">Create, track, and export job bundles for clients and stakeholders.</div>
+            <div class="page-title">Jobs</div>
+            <div class="muted">Open a job to view invoices, payment plan, milestones and releases.</div>
           </div>
           ${actions}
         </div>
 
-        ${tiles}
-        <div class="sep"></div>
-
-        <div class="split">
-          ${tabs}
-          <div class="muted">Role: <strong>${escapeHtml(ROLE_LABEL[ui.role] || ui.role)}</strong></div>
+        <div class="card">
+          <div class="split">
+            <div class="section-title">Your Jobs</div>
+            ${tabs}
+          </div>
+          <div class="sep"></div>
+          ${cards}
         </div>
-
-        <div class="sep"></div>
-        ${rows}
       </div>
     `;
   }
@@ -1144,145 +1542,225 @@
     const job = getJob(jobId);
     if (!job) return renderNotFound();
 
-    const tab = (query.tab || "invoices").toLowerCase(); // invoices | milestones | releases | disputes
+    const tab = (query.tab || "invoices").toLowerCase(); // invoices | payment | milestones | releases | disputes
     const canExport = perms().canExport;
 
-    const headerActions = `
-      <div class="hstack">
-        <button class="btn" data-action="edit-job" data-job-id="${escapeHtml(job.id)}">Edit job</button>
-        <button class="btn ${job.archived ? "primary" : ""}" data-action="${job.archived ? "unarchive-job" : "archive-job"}" data-job-id="${escapeHtml(job.id)}">
-          ${job.archived ? "Unarchive" : "Archive"}
-        </button>
-        ${canExport ? `<button class="btn" data-action="export-job" data-job-id="${escapeHtml(job.id)}">Export job bundle</button>` : ``}
+    const header = `
+      <div class="muted" style="margin-bottom:10px;">
+        <a href="#/jobs">Your Jobs</a> <span aria-hidden="true">›</span> ${escapeHtml(job.name)}
+      </div>
+
+      <div class="split">
+        <div>
+          <div class="page-title">${escapeHtml(job.name)}</div>
+          <div class="muted">${escapeHtml(job.location || job.address || "")}</div>
+        </div>
+
+        <div class="hstack">
+          <button class="btn" data-action="open-savings" data-job-id="${escapeHtml(job.id)}">Savings</button>
+          <button class="btn" data-action="edit-job" data-job-id="${escapeHtml(job.id)}">Edit</button>
+          <button class="btn" data-action="${job.archived ? "unarchive-job" : "archive-job"}" data-job-id="${escapeHtml(job.id)}">${job.archived ? "Unarchive" : "Archive"}</button>
+          ${canExport ? `<button class="btn" data-action="export-job" data-job-id="${escapeHtml(job.id)}">Export</button>` : ``}
+        </div>
       </div>
     `;
 
     const tabs = `
-      <div class="hstack">
-        <a class="btn ${tab==="invoices"?"primary":"ghost"}" href="#/jobs/${escapeHtml(job.id)}?tab=invoices">Invoices</a>
-        <a class="btn ${tab==="milestones"?"primary":"ghost"}" href="#/jobs/${escapeHtml(job.id)}?tab=milestones">Milestones</a>
-        <a class="btn ${tab==="releases"?"primary":"ghost"}" href="#/jobs/${escapeHtml(job.id)}?tab=releases">Releases</a>
-        <a class="btn ${tab==="disputes"?"primary":"ghost"}" href="#/jobs/${escapeHtml(job.id)}?tab=disputes">Disputes</a>
+      <div class="tabs" role="tablist" aria-label="Job tabs" style="margin-top:14px;">
+        <a class="tab ${tab==="invoices"?"active":""}" role="tab" href="#/jobs/${escapeHtml(job.id)}?tab=invoices">Invoices</a>
+        <a class="tab ${tab==="payment"?"active":""}" role="tab" href="#/jobs/${escapeHtml(job.id)}?tab=payment">Payment Plan</a>
+        <a class="tab ${tab==="milestones"?"active":""}" role="tab" href="#/jobs/${escapeHtml(job.id)}?tab=milestones">Milestones</a>
+        <a class="tab ${tab==="releases"?"active":""}" role="tab" href="#/jobs/${escapeHtml(job.id)}?tab=releases">Releases</a>
+        <a class="tab ${tab==="disputes"?"active":""}" role="tab" href="#/jobs/${escapeHtml(job.id)}?tab=disputes">Disputes</a>
       </div>
     `;
 
-    const invoices = jobInvoices(job);
-    const milestones = jobMilestones(job);
-    const releases = jobReleases(job);
-    const disputes = jobDisputes(job);
+    const invs = jobInvoices(job).slice().sort((a,b) => (a.createdAt > b.createdAt ? 1 : -1));
 
     let body = "";
-    if (tab === "milestones") {
+    if (tab === "invoices") {
+      const approvedCount = invs.filter(i => i.status === "approved").length;
+
+      const grid = invs.length ? `
+        <div class="invoice-grid" aria-label="Invoice tiles">
+          ${invs.map((inv, idx) => {
+            const st = (inv.status || "draft");
+            const cls = st === "approved" ? "approved" : (st === "ready" ? "ready" : "draft");
+            return `
+              <a class="inv-tile ${cls}" href="#/invoices/${escapeHtml(inv.id)}" aria-label="Open invoice ${escapeHtml(inv.number)}">
+                <div class="inv-num">${idx + 1}</div>
+                <div class="inv-sub">Fill out invoice</div>
+              </a>
+            `;
+          }).join("")}
+        </div>
+      ` : `<div class="card"><div class="card-title">No invoices yet</div><div class="card-sub">Add your first invoice for this job.</div></div>`;
+
       body = `
-        <table class="table">
-          <thead><tr><th>Milestone</th><th>Target</th><th>Evidence</th><th></th></tr></thead>
-          <tbody>
-            ${milestones.map(ms => `
-              <tr>
-                <td>
-                  <div><strong>${escapeHtml(ms.title)}</strong></div>
-                  <div class="muted">Evidence required: ${ms.evidenceRequired ? "Yes" : "No"}</div>
-                </td>
-                <td>${escapeHtml(formatDate(ms.targetDate))}</td>
-                <td>
-                  <span class="pill ${!ms.evidenceRequired ? "info" : (ms.evidenceProvided ? "ok" : "warn")}">
-                    ${!ms.evidenceRequired ? "Not required" : (ms.evidenceProvided ? "Provided" : "Missing")}
-                  </span>
-                </td>
-                <td>
-                  ${ms.evidenceRequired ? `<button class="btn" data-action="toggle-evidence" data-ms-id="${escapeHtml(ms.id)}">${ms.evidenceProvided ? "Mark missing" : "Mark provided"}</button>` : `<span class="muted">—</span>`}
-                </td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
+        <div class="card">
+          <div class="split">
+            <div class="section-title">Invoices</div>
+            <span class="pill ok">${approvedCount} Approved</span>
+          </div>
+          <div class="sep"></div>
+          ${grid}
+          <div class="inv-cta-wrap">
+            <button class="btn primary" data-action="add-invoice" data-job-id="${escapeHtml(job.id)}">+ Add Invoice</button>
+          </div>
+        </div>
+      `;
+    } else if (tab === "payment") {
+      // simplest: choose latest invoice (or first)
+      const selectedId = query.invoice || (invs[invs.length-1]?.id || (invs[0]?.id || ""));
+      const selectedInv = selectedId ? getInvoice(selectedId) : null;
+
+      const selector = `
+        <div class="field" style="max-width:420px;">
+          <label for="ppInvoiceSelect">Invoice</label>
+          <select id="ppInvoiceSelect" data-action="pp-select" data-job-id="${escapeHtml(job.id)}">
+            ${invs.map(i => `<option value="${escapeHtml(i.id)}"${i.id===selectedId?" selected":""}>${escapeHtml(i.number)} (${escapeHtml(i.status)})</option>`).join("")}
+          </select>
+        </div>
+      `;
+
+      if (!selectedInv) {
+        body = `
+          <div class="card">
+            <div class="card-title">Payment Plan</div>
+            <div class="card-sub">Add an invoice to see the payment plan breakdown.</div>
+            <div class="sep"></div>
+            <button class="btn primary" data-action="add-invoice" data-job-id="${escapeHtml(job.id)}">+ Add Invoice</button>
+          </div>
+        `;
+      } else {
+        const t = invoiceTotals(selectedInv);
+
+        body = `
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Payment Plan</div>
+                <div class="card-sub">Based on ${escapeHtml(selectedInv.number)} (demo). Includes Main Contractor money.</div>
+              </div>
+              ${selector}
+            </div>
+
+            <div class="grid cols-2">
+              <div class="card" style="box-shadow:none;">
+                <div class="muted">Client payment before VAT</div>
+                <div style="font-size:24px;font-weight:900;margin-top:6px;">${escapeHtml(formatGBP(t.clientPaymentBeforeVat))}</div>
+                <div class="sep"></div>
+
+                <div class="split"><div class="muted">Trades total</div><div><strong>${escapeHtml(formatGBP(t.totalToTrades))}</strong></div></div>
+                <div class="split"><div class="muted">Suppliers total</div><div><strong>${escapeHtml(formatGBP(t.totalToSuppliers))}</strong></div></div>
+                <div class="split"><div class="muted">Main contractor</div><div><strong>${escapeHtml(formatGBP(t.mainContractorAmount))}</strong></div></div>
+
+                <div class="sep"></div>
+                <div class="split"><div class="muted">Management fee pot</div><div><strong>${escapeHtml(formatGBP(t.feePot))}</strong></div></div>
+                <div class="split"><div class="muted">VAT on fee pot</div><div><strong>${escapeHtml(formatGBP(t.vatOnFee))}</strong></div></div>
+              </div>
+
+              <div class="card" style="box-shadow:none;">
+                <div class="muted">Grand total (client pays)</div>
+                <div style="font-size:28px;font-weight:900;letter-spacing:-0.02em;margin-top:6px;">${escapeHtml(formatGBP(t.grandTotal))}</div>
+
+                <div class="sep"></div>
+                <div class="banner" style="border:1px solid rgba(240,207,99,.55); background: rgba(240,207,99,.14); border-radius:14px; padding:12px;">
+                  <div style="font-weight:800;">VAT disclaimer</div>
+                  <div class="muted" style="margin-top:6px;">${escapeHtml(VAT_DISCLAIMER)}</div>
+                </div>
+
+                <div class="sep"></div>
+                <div class="muted">
+                  Illustrative difference (example only): <strong>${escapeHtml(formatGBP(t.illustrativeDiff))}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+            <div class="hstack">
+              <a class="btn" href="#/invoices/${escapeHtml(selectedInv.id)}">Open invoice</a>
+              <a class="btn ghost" href="#/payments?job=${encodeURIComponent(job.id)}">Open payments</a>
+            </div>
+          </div>
+        `;
+      }
+    } else if (tab === "milestones") {
+      const ms = jobMilestones(job);
+      body = `
+        <div class="card">
+          <div class="card-title">Milestones</div>
+          <div class="card-sub">Evidence progress is used in dashboard progress and release blockers.</div>
+          <div class="sep"></div>
+
+          <table class="table">
+            <thead><tr><th>Milestone</th><th>Target</th><th>Evidence</th><th></th></tr></thead>
+            <tbody>
+              ${ms.map(m => `
+                <tr>
+                  <td><strong>${escapeHtml(m.title)}</strong><div class="muted">Required: ${m.evidenceRequired ? "Yes" : "No"}</div></td>
+                  <td>${escapeHtml(formatDate(m.targetDate))}</td>
+                  <td><span class="pill ${!m.evidenceRequired ? "info" : (m.evidenceProvided ? "ok" : "warn")}">
+                    ${!m.evidenceRequired ? "Not required" : (m.evidenceProvided ? "Provided" : "Missing")}
+                  </span></td>
+                  <td>${m.evidenceRequired ? `<button class="btn" data-action="toggle-evidence" data-ms-id="${escapeHtml(m.id)}">${m.evidenceProvided ? "Mark missing" : "Mark provided"}</button>` : `<span class="muted">—</span>`}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
       `;
     } else if (tab === "releases") {
-      body = releases.length ? `
-        <table class="table">
-          <thead><tr><th>Release</th><th>Status</th><th>Approvals</th><th></th></tr></thead>
-          <tbody>
-            ${releases.map(r => {
-              const a = r.approvals || { manager:false, client:false };
-              const statusPill = r.status === "Released" ? "ok" : (r.status === "Submitted" ? "warn" : "info");
-              return `
-                <tr>
-                  <td>
-                    <div><strong>${escapeHtml(r.title)}</strong></div>
-                    <div class="muted">Milestone: ${escapeHtml(getMilestone(r.milestoneId)?.title || "—")}</div>
-                  </td>
-                  <td><span class="pill ${statusPill}">${escapeHtml(r.status)}</span></td>
-                  <td class="muted">Mgr: ${a.manager ? "✓" : "—"} • Client: ${a.client ? "✓" : "—"}</td>
-                  <td><a class="btn primary" href="#/payments?job=${encodeURIComponent(job.id)}">Open Payments</a></td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      ` : `<div class="banner info">No releases linked to this job yet.</div>`;
+      const rels = jobReleases(job);
+      body = rels.length ? `
+        <div class="card">
+          <div class="card-title">Releases</div>
+          <div class="card-sub">Open Payments to manage approvals and sending.</div>
+          <div class="sep"></div>
+          <table class="table">
+            <thead><tr><th>Release</th><th>Status</th><th>Approvals</th><th></th></tr></thead>
+            <tbody>
+              ${rels.map(r => {
+                const a = r.approvals || { manager:false, client:false };
+                const pill = r.status === "Released" ? "ok" : (["Submitted","Manager approved"].includes(r.status) ? "warn" : "info");
+                return `
+                  <tr>
+                    <td><strong>${escapeHtml(r.title)}</strong><div class="muted">${escapeHtml(getMilestone(r.milestoneId)?.title || "—")}</div></td>
+                    <td><span class="pill ${pill}">${escapeHtml(r.status)}</span></td>
+                    <td class="muted">Mgr: ${a.manager ? "✓" : "—"} • Client: ${a.client ? "✓" : "—"}</td>
+                    <td><a class="btn primary" href="#/payments?job=${encodeURIComponent(job.id)}">Open Payments</a></td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="card"><div class="card-title">No releases</div><div class="card-sub">Create releases in Payments.</div></div>`;
     } else if (tab === "disputes") {
-      body = disputes.length ? `
+      const ds = jobDisputes(job);
+      body = ds.length ? `
         <div class="vstack">
-          ${disputes.map(d => `
+          ${ds.map(d => `
             <div class="card">
               <div class="split">
                 <div>
                   <div class="card-title">${escapeHtml(d.title)}</div>
-                  <div class="card-sub">Status: <span class="pill ${d.status==="closed"?"ok":"warn"}">${escapeHtml(d.status)}</span> • Pause releases: <span class="pill ${d.pauseRelease?"bad":"ok"}">${d.pauseRelease ? "ON" : "OFF"}</span></div>
+                  <div class="card-sub">
+                    <span class="pill ${d.status==="closed"?"ok":"warn"}">${escapeHtml(d.status)}</span>
+                    <span class="pill ${d.pauseRelease?"bad":"ok"}">pauseRelease ${d.pauseRelease ? "ON" : "OFF"}</span>
+                  </div>
                 </div>
-                <div class="hstack">
-                  <a class="btn primary" href="#/disputes?job=${encodeURIComponent(job.id)}">Open Disputes</a>
-                </div>
+                <a class="btn primary" href="#/disputes?job=${encodeURIComponent(job.id)}">Open Disputes</a>
               </div>
             </div>
           `).join("")}
         </div>
-      ` : `<div class="banner info">No disputes for this job.</div>`;
-    } else {
-      body = invoices.length ? `
-        <table class="table">
-          <thead><tr><th>Invoice</th><th>Client payment (before VAT)</th><th>Updated</th><th></th></tr></thead>
-          <tbody>
-            ${invoices.map(inv => {
-              const t = invoiceTotals(inv);
-              return `
-                <tr>
-                  <td>
-                    <div><strong>${escapeHtml(inv.number)}</strong></div>
-                    <div class="muted">Created: ${escapeHtml(formatDate(inv.createdAt))}</div>
-                  </td>
-                  <td><strong>${escapeHtml(formatGBP(t.clientPaymentBeforeVat))}</strong></td>
-                  <td>${escapeHtml(formatDate(inv.updatedAt))}</td>
-                  <td><a class="btn primary" href="#/invoices/${escapeHtml(inv.id)}">Open</a></td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      ` : `<div class="banner info">No invoices for this job.</div>`;
+      ` : `<div class="card"><div class="card-title">No disputes</div><div class="card-sub">Disputes can pause releases as a blocker.</div></div>`;
     }
 
     return `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-title">${escapeHtml(job.name)}</div>
-            <div class="card-sub">${escapeHtml(job.clientName)} • ${escapeHtml(job.address)} • <span class="pill ${job.archived?"warn":"info"}">${escapeHtml(job.archived ? "Archived" : job.status)}</span></div>
-          </div>
-          ${headerActions}
-        </div>
-
-        <div class="banner info">
-          <div class="split">
-            <div><strong>Demo note:</strong> Changes persist in <span class="muted">localStorage</span>.</div>
-            <div class="hstack">
-              <a class="btn ghost" href="#/messages?job=${encodeURIComponent(job.id)}">Open messages</a>
-              <a class="btn ghost" href="#/payments?job=${encodeURIComponent(job.id)}">Open payments</a>
-            </div>
-          </div>
-        </div>
-
-        <div class="sep"></div>
+      <div class="vstack">
+        ${header}
         ${tabs}
         <div class="sep"></div>
         ${body}
@@ -1290,12 +1768,19 @@
     `;
   }
 
+  /* CONTINUES IN PART 6 */
+// PART 5 END
+
+ // PART 6 START
   function renderInvoiceDetail(invoiceId) {
     const inv = getInvoice(invoiceId);
     if (!inv) return renderNotFound();
     const job = getJob(inv.jobId);
     const t = invoiceTotals(inv);
+
     const canEdit = perms().canEditInvoice;
+
+    const statusPill = inv.status === "approved" ? "ok" : (inv.status === "ready" ? "info" : "warn");
 
     const lineRows = (inv.lineItems || []).map(li => {
       const p = getPayee(li.payeeId);
@@ -1305,169 +1790,209 @@
             <div><strong>${escapeHtml(li.description)}</strong></div>
             <div class="muted">${escapeHtml(p ? p.name : li.payeeId)} • ${escapeHtml(li.category)}</div>
           </td>
-          <td>${escapeHtml(formatGBP(li.amount))}</td>
+          <td><strong>${escapeHtml(formatGBP(li.amount))}</strong></td>
+          <td style="text-align:right;">
+            ${canEdit ? `<button class="btn danger" data-action="remove-line-item" data-invoice-id="${escapeHtml(inv.id)}" data-li-id="${escapeHtml(li.id)}">Remove</button>` : `<span class="muted">—</span>`}
+          </td>
         </tr>
       `;
     }).join("");
 
-    const editable = canEdit ? `
-      <div class="grid cols-2">
-        <div class="field">
-          <label for="invBeforeVat">Client payment before VAT</label>
-          <input id="invBeforeVat" type="number" inputmode="decimal" step="0.01" value="${escapeHtml(String(t.clientPaymentBeforeVat))}" />
-          <div class="muted">Editable in demo. Affects fee pot and VAT on fee pot.</div>
+    const editBlock = canEdit ? `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Invoice inputs</div>
+            <div class="card-sub">Edit values, then Save.</div>
+          </div>
+          <span class="pill ${statusPill}">${escapeHtml(inv.status)}</span>
         </div>
-        <div class="field">
-          <label for="invVatRate">VAT rate on fee pot (%)</label>
-          <input id="invVatRate" type="number" inputmode="numeric" step="1" value="${escapeHtml(String(t.vatRate))}" />
-          <div class="muted">Typically 20% (demo). Clamped 0–100.</div>
+
+        <div class="grid cols-3">
+          <div class="field">
+            <label for="invBeforeVat">Client payment before VAT</label>
+            <input id="invBeforeVat" type="number" inputmode="decimal" step="0.01" value="${escapeHtml(String(t.clientPaymentBeforeVat))}" />
+          </div>
+
+          <div class="field">
+            <label for="invVatRate">VAT rate on fee pot (%)</label>
+            <input id="invVatRate" type="number" inputmode="numeric" step="1" value="${escapeHtml(String(t.vatRate))}" />
+          </div>
+
+          <div class="field">
+            <label for="invMainContractor">Main contractor amount</label>
+            <input id="invMainContractor" type="number" inputmode="decimal" step="0.01" value="${escapeHtml(String(t.mainContractorAmount))}" />
+          </div>
         </div>
-      </div>
-      <div class="hstack">
-        <button class="btn primary" data-action="save-invoice" data-invoice-id="${escapeHtml(inv.id)}">Save</button>
-        <button class="btn ghost" data-action="revert-invoice" data-invoice-id="${escapeHtml(inv.id)}">Revert</button>
+
+        <div class="grid cols-2" style="margin-top:14px;">
+          <div class="field">
+            <label for="invStatus">Invoice status</label>
+            <select id="invStatus">
+              <option value="draft"${inv.status==="draft"?" selected":""}>draft</option>
+              <option value="ready"${inv.status==="ready"?" selected":""}>ready</option>
+              <option value="approved"${inv.status==="approved"?" selected":""}>approved</option>
+            </select>
+          </div>
+
+          <div class="hstack" style="align-self:end; justify-content:flex-end;">
+            <button class="btn" data-action="revert-invoice" data-invoice-id="${escapeHtml(inv.id)}">Cancel</button>
+            <button class="btn primary" data-action="save-invoice" data-invoice-id="${escapeHtml(inv.id)}">Save</button>
+          </div>
+        </div>
       </div>
     ` : `
-      <div class="banner warn">
-        Viewing as <strong>${escapeHtml(ROLE_LABEL[ui.role] || ui.role)}</strong>. Editing is disabled for this role.
+      <div class="card">
+        <div class="split">
+          <div>
+            <div class="card-title">Invoice</div>
+            <div class="card-sub">Viewing as <strong>${escapeHtml(ROLE_LABEL[ui.role] || ui.role)}</strong> (editing disabled).</div>
+          </div>
+          <span class="pill ${statusPill}">${escapeHtml(inv.status)}</span>
+        </div>
+      </div>
+    `;
+
+    const summary = `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Payment Plan summary</div>
+            <div class="card-sub">Trades + suppliers + main contractor + fee pot VAT</div>
+          </div>
+          <a class="btn" href="#/jobs/${escapeHtml(inv.jobId)}?tab=payment&invoice=${encodeURIComponent(inv.id)}">Open Payment Plan</a>
+        </div>
+
+        <div class="grid cols-3">
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">Trades total</div>
+            <div style="font-size:18px;font-weight:900;margin-top:6px;">${escapeHtml(formatGBP(t.totalToTrades))}</div>
+          </div>
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">Suppliers total</div>
+            <div style="font-size:18px;font-weight:900;margin-top:6px;">${escapeHtml(formatGBP(t.totalToSuppliers))}</div>
+          </div>
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">Main contractor</div>
+            <div style="font-size:18px;font-weight:900;margin-top:6px;">${escapeHtml(formatGBP(t.mainContractorAmount))}</div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="grid cols-3">
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">Fee pot</div>
+            <div style="font-size:18px;font-weight:900;margin-top:6px;">${escapeHtml(formatGBP(t.feePot))}</div>
+          </div>
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">VAT on fee pot</div>
+            <div style="font-size:18px;font-weight:900;margin-top:6px;">${escapeHtml(formatGBP(t.vatOnFee))}</div>
+          </div>
+          <div class="card" style="box-shadow:none;">
+            <div class="muted">Grand total</div>
+            <div style="font-size:20px;font-weight:900;margin-top:6px;">${escapeHtml(formatGBP(t.grandTotal))}</div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="card" style="box-shadow:none; border-color: rgba(240,207,99,.55); background: rgba(240,207,99,.14);">
+          <div style="font-weight:800;">VAT disclaimer</div>
+          <div class="muted" style="margin-top:6px;">${escapeHtml(VAT_DISCLAIMER)}</div>
+        </div>
+
+        <div class="muted" style="margin-top:10px;">
+          Illustrative difference (example only): <strong>${escapeHtml(formatGBP(t.illustrativeDiff))}</strong>
+        </div>
+      </div>
+    `;
+
+    const tools = `
+      <div class="hstack">
+        <button class="btn" data-action="download-pdf" data-invoice-id="${escapeHtml(inv.id)}">Download PDF</button>
+        <button class="btn" data-action="print-invoice" data-invoice-id="${escapeHtml(inv.id)}">Print</button>
+        <button class="btn primary" data-action="share-invoice" data-invoice-id="${escapeHtml(inv.id)}">Share</button>
+        <a class="btn ghost" href="#/jobs/${escapeHtml(inv.jobId)}?tab=invoices">Back</a>
       </div>
     `;
 
     return `
-      <div class="card" id="invoiceView" data-invoice-id="${escapeHtml(inv.id)}">
-        <div class="card-header">
-          <div>
-            <div class="card-title">${escapeHtml(inv.number)} <span class="pill info">Invoice</span></div>
-            <div class="card-sub">${escapeHtml(job ? job.name : inv.jobId)} • Created ${escapeHtml(formatDate(inv.createdAt))}</div>
-          </div>
-          <div class="hstack">
-            <button class="btn" data-action="download-pdf" data-invoice-id="${escapeHtml(inv.id)}">Download PDF</button>
-            <button class="btn" data-action="print-invoice" data-invoice-id="${escapeHtml(inv.id)}">Print</button>
-            <button class="btn primary" data-action="share-invoice" data-invoice-id="${escapeHtml(inv.id)}">Share</button>
-            <a class="btn ghost" href="#/jobs/${escapeHtml(inv.jobId)}?tab=invoices">Back</a>
-          </div>
+      <div class="vstack" id="invoiceView" data-invoice-id="${escapeHtml(inv.id)}">
+        <div class="muted">
+          <a href="#/jobs">Your Jobs</a> <span aria-hidden="true">›</span>
+          <a href="#/jobs/${escapeHtml(inv.jobId)}?tab=invoices">${escapeHtml(job ? job.name : inv.jobId)}</a>
+          <span aria-hidden="true">›</span> ${escapeHtml(inv.number)}
         </div>
 
-        ${editable}
-        <div class="sep"></div>
+        <div class="split">
+          <div>
+            <div class="page-title">${escapeHtml(inv.number)}</div>
+            <div class="muted">${escapeHtml(job ? job.name : inv.jobId)} • Updated ${escapeHtml(formatDate(inv.updatedAt))}</div>
+          </div>
+          ${tools}
+        </div>
+
+        ${editBlock}
 
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">Line items</div>
-              <div class="card-sub">Trades + suppliers paid by client (demo).</div>
+              <div class="card-title">Line items (trades + suppliers)</div>
+              <div class="card-sub">These contribute to Trades/Suppliers totals.</div>
             </div>
+            ${canEdit ? `<button class="btn primary" data-action="add-line-item" data-invoice-id="${escapeHtml(inv.id)}">+ Add line</button>` : ``}
           </div>
+
           <table class="table">
-            <thead><tr><th>Description</th><th>Amount</th></tr></thead>
-            <tbody>${lineRows}</tbody>
+            <thead><tr><th>Description</th><th>Amount</th><th></th></tr></thead>
+            <tbody>
+              ${lineRows || `<tr><td class="muted">No line items</td><td class="muted">—</td><td class="muted">—</td></tr>`}
+            </tbody>
           </table>
         </div>
 
-        <div class="sep"></div>
-        <div class="grid cols-3">
-          <div class="kpi"><div class="kpi-v">${escapeHtml(formatGBP(t.totalToPayees))}</div><div class="kpi-l">Total to payees</div></div>
-          <div class="kpi"><div class="kpi-v">${escapeHtml(formatGBP(t.feePot))}</div><div class="kpi-l">Management fee pot</div></div>
-          <div class="kpi"><div class="kpi-v">${escapeHtml(formatGBP(t.vatOnFee))}</div><div class="kpi-l">VAT on fee pot</div></div>
-        </div>
-
-        <div class="sep"></div>
-        <div class="grid cols-2">
-          <div class="card">
-            <div class="card-title">Grand total (client pays)</div>
-            <div class="card-sub muted">Client payment before VAT + VAT on fee pot</div>
-            <div style="font-size:28px;font-weight:900;letter-spacing:-0.02em;margin-top:8px;">${escapeHtml(formatGBP(t.grandTotal))}</div>
-            <div class="muted" style="margin-top:8px;">VAT on fee pot: <strong>${escapeHtml(formatGBP(t.vatOnFee))}</strong></div>
-          </div>
-          <div class="card">
-            <div class="card-title">Compliance</div>
-            <div class="card-sub muted">Shown wherever VAT is displayed</div>
-            <div class="banner warn" style="margin-top:10px;">${escapeHtml(VAT_DISCLAIMER)}</div>
-          </div>
-        </div>
-
-        <div class="sep"></div>
-        <div class="banner info">
-          <div class="split">
-            <div>
-              <strong>Illustrative difference (example only):</strong> ${escapeHtml(formatGBP(t.illustrativeDiff))}
-              <div class="muted">Compares 20% VAT on full client payment vs VAT only on the fee pot (illustration).</div>
-            </div>
-            <span class="pill info">Example only</span>
-          </div>
-        </div>
+        ${summary}
       </div>
     `;
   }
 
-  /* CONTINUES IN PART 5 */
-// PART 4 END
-
- // PART 5 START
   function renderPayments(query) {
     const jobId = query.job || "";
     const filterJob = jobId ? getJob(jobId) : null;
 
     const can = perms();
-    const list = filterJob
-      ? jobReleases(filterJob)
-      : db.releases.slice().sort((a,b) => (a.updatedAt > b.updatedAt ? -1 : 1));
+    const list = filterJob ? jobReleases(filterJob) : db.releases.slice().sort((a,b)=> (a.updatedAt>b.updatedAt?-1:1));
 
-    const header = `
-      <div class="split">
-        <div>
-          <div class="card-title">Payments</div>
-          <div class="card-sub">Releases flow: Draft → Submitted → Manager approved → Client approved → Sent to partner → Released.</div>
-        </div>
-        <div class="hstack">
-          <button class="btn primary" data-action="create-release"${filterJob ? ` data-job-id="${escapeHtml(filterJob.id)}"` : ""}>Create release request</button>
-          ${filterJob ? `<a class="btn ghost" href="#/jobs/${escapeHtml(filterJob.id)}?tab=releases">Back to job</a>` : ``}
+    const testBanner = db.meta.testMode ? `
+      <div class="card" style="border-color: rgba(240,207,99,.55); background: rgba(240,207,99,.14);">
+        <div class="split">
+          <div>
+            <div class="card-title">TEST MODE is ON</div>
+            <div class="card-sub">Sending is simulated. No funds move.</div>
+          </div>
+          <span class="pill warn">TEST MODE</span>
         </div>
       </div>
-    `;
-
-    const banner = `
-      <div class="banner info">
-        <div><strong>Funds statement:</strong> ${escapeHtml(FUNDS_STATEMENT)}</div>
-        <div class="muted" style="margin-top:6px;">This demo does not hold or move money. “Send to partner” is simulated.</div>
-      </div>
-    `;
+    ` : "";
 
     const filter = `
-      <div class="hstack">
-        <div class="field" style="min-width:280px;">
-          <label for="payJobFilter">Filter by job</label>
-          <select id="payJobFilter" data-action="payments-filter">
-            <option value="">All jobs</option>
-            ${db.jobs.map(j => `<option value="${escapeHtml(j.id)}"${j.id===jobId?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}
-          </select>
-        </div>
-        <div class="muted">Role permissions apply to actions.</div>
+      <div class="field" style="max-width:420px;">
+        <label for="payJobFilter">Filter by job</label>
+        <select id="payJobFilter" data-action="payments-filter">
+          <option value="">All jobs</option>
+          ${db.jobs.map(j => `<option value="${escapeHtml(j.id)}"${j.id===jobId?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}
+        </select>
       </div>
     `;
 
     const rows = list.length ? `
       <table class="table">
-        <thead>
-          <tr>
-            <th>Release</th>
-            <th>Status</th>
-            <th>Approvals</th>
-            <th>Amount</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Release</th><th>Status</th><th>Approvals</th><th>Amount</th><th>Actions</th></tr></thead>
         <tbody>
           ${list.map(r => {
             const job = getJob(r.jobId);
-            const ms = r.milestoneId ? getMilestone(r.milestoneId) : null;
-            const amount = (r.payeeSplits || []).reduce((s, x) => s + Number(x.amount || 0), 0);
-            const pill = r.status === "Released" ? "ok"
-              : r.status === "Sent to partner" ? "info"
-              : r.status === "Client approved" ? "info"
-              : r.status === "Manager approved" ? "warn"
-              : r.status === "Submitted" ? "warn"
-              : "info";
+            const amount = (r.payeeSplits || []).reduce((s,x)=> s+Number(x.amount||0),0);
             const a = r.approvals || { manager:false, client:false };
 
             const actions = [];
@@ -1478,14 +2003,13 @@
             if (r.status === "Sent to partner" && can.canMarkReleased) actions.push(`<button class="btn primary" data-action="mark-released" data-release-id="${escapeHtml(r.id)}">Mark released</button>`);
             actions.push(`<button class="btn" data-action="view-release" data-release-id="${escapeHtml(r.id)}">View</button>`);
 
+            const pill = r.status === "Released" ? "ok" : (["Submitted","Manager approved"].includes(r.status) ? "warn" : "info");
+
             return `
               <tr>
-                <td>
-                  <div><strong>${escapeHtml(r.title)}</strong></div>
-                  <div class="muted">${escapeHtml(job ? job.name : r.jobId)}${ms ? ` • ${escapeHtml(ms.title)}` : ""}</div>
-                </td>
+                <td><strong>${escapeHtml(r.title)}</strong><div class="muted">${escapeHtml(job ? job.name : r.jobId)}</div></td>
                 <td><span class="pill ${pill}">${escapeHtml(r.status)}</span></td>
-                <td class="muted">Mgr: ${a.manager ? "✓" : "—"} • Client: ${a.client ? "✓" : "—"}</td>
+                <td class="muted">Mgr: ${a.manager?"✓":"—"} • Client: ${a.client?"✓":"—"}</td>
                 <td><strong>${escapeHtml(formatGBP(amount))}</strong></td>
                 <td><div class="hstack">${actions.join("")}</div></td>
               </tr>
@@ -1493,16 +2017,25 @@
           }).join("")}
         </tbody>
       </table>
-    ` : `<div class="banner info">No releases found.</div>`;
+    ` : `<div class="card"><div class="card-title">No releases</div><div class="card-sub">Create a release request for a job.</div></div>`;
 
     return `
-      <div class="card">
-        ${header}
-        <div class="sep"></div>
-        ${banner}
-        <div class="sep"></div>
+      <div class="vstack">
+        ${testBanner}
+
+        <div class="split">
+          <div>
+            <div class="page-title">Payments</div>
+            <div class="muted">Draft → Submitted → Manager approved → Client approved → Sent to partner → Released</div>
+          </div>
+          <button class="btn primary" data-action="create-release"${filterJob ? ` data-job-id="${escapeHtml(filterJob.id)}"` : ""}>Create release request</button>
+        </div>
+
+        <div class="card" style="border-color: rgba(77,131,255,.22); background: rgba(77,131,255,.06);">
+          <div><strong>Funds statement:</strong> ${escapeHtml(FUNDS_STATEMENT)}</div>
+        </div>
+
         ${filter}
-        <div class="sep"></div>
         ${rows}
       </div>
     `;
@@ -1529,12 +2062,12 @@
               <div class="card">
                 <div class="split">
                   <div>
-                    <div class="card-title">Bank confirmation</div>
-                    <div class="card-sub">${escapeHtml(payee ? payee.name : it.id)} • Bank details changed</div>
+                    <div class="card-title">Confirm bank details</div>
+                    <div class="card-sub">${escapeHtml(payee ? payee.name : it.id)}</div>
                   </div>
                   <div class="hstack">
                     <button class="btn primary" data-action="confirm-bank" data-payee-id="${escapeHtml(it.id)}">Confirm</button>
-                    <a class="btn ghost" href="#/company?payee=${encodeURIComponent(it.id)}">View payee</a>
+                    <a class="btn" href="#/company?payee=${encodeURIComponent(it.id)}">View</a>
                   </div>
                 </div>
               </div>
@@ -1543,97 +2076,95 @@
 
           const rel = getRelease(it.id);
           const job = rel ? getJob(rel.jobId) : null;
+
           return `
             <div class="card">
               <div class="split">
                 <div>
                   <div class="card-title">${escapeHtml(rel ? rel.title : it.label)}</div>
-                  <div class="card-sub">${escapeHtml(job ? job.name : "—")} • <span class="pill info">${escapeHtml(it.type)}</span></div>
+                  <div class="card-sub">${escapeHtml(job ? job.name : "—")} • ${escapeHtml(it.type)}</div>
                 </div>
                 <div class="hstack">
                   ${it.type === "release_mgr" ? `<button class="btn primary" data-action="approve-release-manager" data-release-id="${escapeHtml(it.id)}">Approve</button>` : ``}
                   ${it.type === "release_client" ? `<button class="btn primary" data-action="approve-release-client" data-release-id="${escapeHtml(it.id)}">Approve</button>` : ``}
-                  ${it.type === "release_ready" ? `<button class="btn primary" data-action="send-to-partner" data-release-id="${escapeHtml(it.id)}">Send to partner</button>` : ``}
-                  ${rel ? `<a class="btn ghost" href="#/payments?job=${encodeURIComponent(rel.jobId)}">Open payments</a>` : ``}
+                  ${it.type === "release_ready" ? `<button class="btn primary" data-action="send-to-partner" data-release-id="${escapeHtml(it.id)}">Send</button>` : ``}
+                  ${rel ? `<a class="btn" href="#/payments?job=${encodeURIComponent(rel.jobId)}">Payments</a>` : ``}
                 </div>
               </div>
             </div>
           `;
         }).join("")}
       </div>
-    ` : `<div class="banner info">No items requiring action for this role.</div>`;
+    ` : `<div class="card"><div class="card-title">All caught up</div><div class="card-sub">No approvals required for this role.</div></div>`;
 
     return `
-      <div class="card">
-        <div class="card-header">
+      <div class="vstack">
+        <div class="split">
           <div>
-            <div class="card-title">Approvals</div>
-            <div class="card-sub">Inbox for releases, bank confirmations, and change approvals.</div>
+            <div class="page-title">Approvals</div>
+            <div class="muted">Your inbox for releases, bank confirms, and send-ready items.</div>
           </div>
-          <div class="muted">Role: <strong>${escapeHtml(ROLE_LABEL[ui.role] || ui.role)}</strong></div>
+          <span class="pill info">Role: ${escapeHtml(ROLE_LABEL[ui.role] || ui.role)}</span>
         </div>
         ${rows}
       </div>
     `;
   }
 
+  /* CONTINUES IN PART 7 */
+// PART 6 END
+
+ // PART 7 START
   function renderDisputes(query) {
     const jobId = query.job || "";
     const job = jobId ? getJob(jobId) : null;
     const list = job ? jobDisputes(job) : db.disputes.slice();
 
     const filter = `
-      <div class="hstack">
-        <div class="field" style="min-width:280px;">
-          <label for="disJobFilter">Filter by job</label>
-          <select id="disJobFilter" data-action="disputes-filter">
-            <option value="">All jobs</option>
-            ${db.jobs.map(j => `<option value="${escapeHtml(j.id)}"${j.id===jobId?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}
-          </select>
-        </div>
-        <button class="btn primary" data-action="create-dispute"${job ? ` data-job-id="${escapeHtml(job.id)}"` : ""}>Create dispute</button>
+      <div class="field" style="max-width:420px;">
+        <label for="disJobFilter">Filter by job</label>
+        <select id="disJobFilter" data-action="disputes-filter">
+          <option value="">All jobs</option>
+          ${db.jobs.map(j => `<option value="${escapeHtml(j.id)}"${j.id===jobId?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}
+        </select>
       </div>
     `;
 
-    const rows = list.length ? `
-      <div class="vstack">
-        ${list.map(d => {
-          const j = getJob(d.jobId);
-          return `
-            <div class="card">
-              <div class="split">
-                <div>
-                  <div class="card-title">${escapeHtml(d.title)}</div>
-                  <div class="card-sub">
-                    ${escapeHtml(j ? j.name : d.jobId)} •
-                    <span class="pill ${d.status==="closed"?"ok":"warn"}">${escapeHtml(d.status)}</span> •
-                    Pause releases: <span class="pill ${d.pauseRelease?"bad":"ok"}">${d.pauseRelease ? "ON" : "OFF"}</span>
-                  </div>
-                </div>
-                <div class="hstack">
-                  <button class="btn" data-action="toggle-pause" data-dispute-id="${escapeHtml(d.id)}">${d.pauseRelease ? "Unpause" : "Pause"} releases</button>
-                  <button class="btn" data-action="toggle-dispute" data-dispute-id="${escapeHtml(d.id)}">${d.status==="closed" ? "Reopen" : "Close"}</button>
-                  <button class="btn primary" data-action="view-dispute" data-dispute-id="${escapeHtml(d.id)}">View</button>
-                </div>
-              </div>
-            </div>
-          `;
-        }).join("")}
-      </div>
-    ` : `<div class="banner info">No disputes found.</div>`;
-
     return `
-      <div class="card">
-        <div class="card-header">
+      <div class="vstack">
+        <div class="split">
           <div>
-            <div class="card-title">Disputes</div>
-            <div class="card-sub">Disputes can pause release sending until resolved.</div>
+            <div class="page-title">Disputes</div>
+            <div class="muted">If pauseRelease is ON, “Send to partner” is blocked.</div>
           </div>
-          <div class="muted">Blocking rule: pauseRelease ON blocks “Send to partner”.</div>
+          <button class="btn primary" data-action="create-dispute"${job ? ` data-job-id="${escapeHtml(job.id)}"` : ""}>Create dispute</button>
         </div>
         ${filter}
-        <div class="sep"></div>
-        ${rows}
+
+        <div class="vstack">
+          ${(list.length ? list : []).map(d => {
+            const j = getJob(d.jobId);
+            return `
+              <div class="card">
+                <div class="split">
+                  <div>
+                    <div class="card-title">${escapeHtml(d.title)}</div>
+                    <div class="card-sub">${escapeHtml(j ? j.name : d.jobId)}</div>
+                    <div class="hstack" style="margin-top:10px;">
+                      <span class="pill ${d.status==="closed"?"ok":"warn"}">${escapeHtml(d.status)}</span>
+                      <span class="pill ${d.pauseRelease?"bad":"ok"}">pauseRelease ${d.pauseRelease?"ON":"OFF"}</span>
+                    </div>
+                  </div>
+                  <div class="hstack">
+                    <button class="btn" data-action="toggle-pause" data-dispute-id="${escapeHtml(d.id)}">${d.pauseRelease?"Unpause":"Pause"} releases</button>
+                    <button class="btn" data-action="toggle-dispute" data-dispute-id="${escapeHtml(d.id)}">${d.status==="closed"?"Reopen":"Close"}</button>
+                    <button class="btn primary" data-action="view-dispute" data-dispute-id="${escapeHtml(d.id)}">View</button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join("") || `<div class="card"><div class="card-title">No disputes</div><div class="card-sub">Create one to test blockers.</div></div>`}
+        </div>
       </div>
     `;
   }
@@ -1643,7 +2174,7 @@
     const job = jobId ? getJob(jobId) : null;
 
     const picker = `
-      <div class="field" style="min-width:280px;">
+      <div class="field" style="max-width:420px;">
         <label for="msgJobPick">Job</label>
         <select id="msgJobPick" data-action="messages-filter">
           <option value="">Select a job…</option>
@@ -1654,16 +2185,15 @@
 
     if (!job) {
       return `
-        <div class="card">
-          <div class="card-header">
+        <div class="vstack">
+          <div class="split">
             <div>
-              <div class="card-title">Messages</div>
-              <div class="card-sub">Job threads, posts, and invoice snapshot attachments.</div>
+              <div class="page-title">Messages</div>
+              <div class="muted">Select a job thread.</div>
             </div>
+            ${picker}
           </div>
-          <div class="hstack">${picker}</div>
-          <div class="sep"></div>
-          <div class="banner info">Select a job to view the thread.</div>
+          <div class="card"><div class="card-title">Pick a job</div><div class="card-sub">Threads and invoice snapshots appear here.</div></div>
         </div>
       `;
     }
@@ -1672,23 +2202,21 @@
     const thread = `
       <div class="vstack">
         ${msgs.map(m => {
-          const attachments = (m.attachments || []).map(a => {
+          const atts = (m.attachments || []).map(a => {
             if (a.type === "invoice_snapshot") {
               return `
-                <div class="banner info">
+                <div class="card" style="border-color: rgba(77,131,255,.22); background: rgba(77,131,255,.06);">
                   <div class="split">
                     <div>
-                      <strong>Invoice snapshot:</strong> ${escapeHtml(a.name || a.snapshotId)}
-                      <div class="muted">You can regenerate a PDF from this stored snapshot.</div>
+                      <div style="font-weight:800;">Invoice snapshot</div>
+                      <div class="muted">${escapeHtml(a.name || a.snapshotId)}</div>
                     </div>
-                    <div class="hstack">
-                      <button class="btn primary" data-action="regen-pdf" data-snapshot-id="${escapeHtml(a.snapshotId)}">Regenerate PDF</button>
-                    </div>
+                    <button class="btn primary" data-action="regen-pdf" data-snapshot-id="${escapeHtml(a.snapshotId)}">Regenerate PDF</button>
                   </div>
                 </div>
               `;
             }
-            return `<div class="banner info"><strong>Attachment:</strong> ${escapeHtml(a.name || "File")}</div>`;
+            return `<div class="card"><div class="muted">Attachment:</div><div>${escapeHtml(a.name || "File")}</div></div>`;
           }).join("");
 
           return `
@@ -1702,7 +2230,7 @@
               </div>
               <div class="sep"></div>
               <div>${escapeHtml(m.text)}</div>
-              ${attachments ? `<div class="sep"></div>${attachments}` : ``}
+              ${atts ? `<div class="sep"></div>${atts}` : ``}
             </div>
           `;
         }).join("")}
@@ -1712,7 +2240,7 @@
     const composer = `
       <div class="card">
         <div class="card-title">Post a message</div>
-        <div class="card-sub">Posting writes into localStorage (static demo).</div>
+        <div class="card-sub">Stored in localStorage (demo).</div>
         <div class="sep"></div>
         <div class="field">
           <label for="msgText">Message</label>
@@ -1720,132 +2248,123 @@
         </div>
         <div class="hstack">
           <button class="btn primary" data-action="post-message" data-job-id="${escapeHtml(job.id)}">Post</button>
-          <a class="btn ghost" href="#/jobs/${escapeHtml(job.id)}">Open job</a>
+          <a class="btn" href="#/jobs/${escapeHtml(job.id)}?tab=invoices">Back to job</a>
         </div>
       </div>
     `;
 
     return `
-      <div class="card">
-        <div class="card-header">
+      <div class="vstack">
+        <div class="split">
           <div>
-            <div class="card-title">Messages</div>
-            <div class="card-sub">${escapeHtml(job.name)} • Thread</div>
+            <div class="page-title">Messages</div>
+            <div class="muted">${escapeHtml(job.name)}</div>
           </div>
-          <div class="hstack">${picker}</div>
+          ${picker}
         </div>
         ${composer}
-        <div class="sep"></div>
         ${thread}
       </div>
     `;
   }
 
   function renderCompany(query) {
-    const focusPayee = query.payee || "";
-    const canEdit = perms().canEditBank;
-    const canConfirm = perms().canConfirmBank;
+    const payeeFocus = query.payee || "";
 
-    const banner = `
-      <div class="banner info">
-        <div class="split">
-          <div><strong>Bank change flow:</strong> editing sets <span class="pill warn">bankChanged</span>. Manager/Admin must confirm before sending releases.</div>
-          <div class="muted">Blocking enforced on “Send to partner”.</div>
-        </div>
-      </div>
-    `;
-
-    const rows = `
-      <table class="table">
-        <thead><tr><th>Payee</th><th>VAT</th><th>Bank</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          ${db.payees.map(p => {
-            const status = p.bankChanged && !p.bankConfirmed ? "warn" : (p.bankConfirmed ? "ok" : "info");
-            const statusText = p.bankChanged && !p.bankConfirmed ? "Changed • Needs confirm" : (p.bankConfirmed ? "Confirmed" : "Unconfirmed");
-            const highlight = (focusPayee && focusPayee === p.id) ? `style="outline:2px solid rgba(124,221,255,.45); outline-offset:2px; border-radius:12px;"` : "";
-            return `
-              <tr ${highlight}>
-                <td>
-                  <div><strong>${escapeHtml(p.name)}</strong></div>
-                  <div class="muted">${escapeHtml(p.type)} • ${escapeHtml(p.id)}</div>
-                </td>
-                <td class="muted">${p.vatRegistered ? `VAT reg • ${escapeHtml(p.vatNumber)}` : "Not VAT registered"}</td>
-                <td class="muted">
-                  ${escapeHtml(p.bank.bankName)} • ${escapeHtml(p.bank.sortCode)} • ${escapeHtml(p.bank.accountNumber)}
-                  <div class="muted">A/C: ${escapeHtml(p.bank.accountName)}</div>
-                </td>
-                <td><span class="pill ${status}">${escapeHtml(statusText)}</span></td>
-                <td>
-                  <div class="hstack">
-                    ${canEdit ? `<button class="btn" data-action="edit-bank" data-payee-id="${escapeHtml(p.id)}">Edit bank</button>` : ``}
-                    ${canConfirm && p.bankChanged && !p.bankConfirmed ? `<button class="btn primary" data-action="confirm-bank" data-payee-id="${escapeHtml(p.id)}">Confirm</button>` : ``}
-                  </div>
-                </td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-    `;
-
-    return `
+    const companyForm = `
       <div class="card">
         <div class="card-header">
           <div>
-            <div class="card-title">Company</div>
-            <div class="card-sub">Payee directory and bank verification controls.</div>
+            <div class="card-title">Company Details</div>
+            <div class="card-sub">Edit and save (demo). Cancel reverts to saved values.</div>
           </div>
-          <div class="muted">Role: <strong>${escapeHtml(ROLE_LABEL[ui.role] || ui.role)}</strong></div>
+          <div class="hstack">
+            <button class="btn" data-action="company-cancel">Cancel</button>
+            <button class="btn primary" data-action="company-save">Save Changes</button>
+          </div>
         </div>
-        ${banner}
-        <div class="sep"></div>
-        ${(!canEdit && !canConfirm) ? `<div class="banner warn">This role can view payees but cannot edit or confirm bank details.</div><div class="sep"></div>` : ``}
-        ${rows}
+
+        <div class="grid cols-2">
+          <div class="vstack">
+            <div class="field"><label for="coName">Company Name</label><input id="coName" value="${escapeHtml(db.company.companyName)}"></div>
+            <div class="field"><label for="coVat">VAT Number</label><input id="coVat" value="${escapeHtml(db.company.vatNumber)}"></div>
+            <div class="field"><label for="coReg">Company Reg Number</label><input id="coReg" value="${escapeHtml(db.company.companyRegNumber)}"></div>
+            <div class="field"><label for="coUtr">UTR Number</label><input id="coUtr" value="${escapeHtml(db.company.utrNumber)}"></div>
+            <div class="field"><label for="coNi">National Ins. Number</label><input id="coNi" value="${escapeHtml(db.company.nationalInsuranceNumber)}"></div>
+          </div>
+
+          <div class="vstack">
+            <div class="field"><label for="coAddr">Company Address</label><textarea id="coAddr" rows="3">${escapeHtml(db.company.companyAddress)}</textarea></div>
+            <div class="field"><label for="coBill">Billing Address</label><textarea id="coBill" rows="3">${escapeHtml(db.company.billingAddress)}</textarea></div>
+            <div class="field"><label for="coPhone">Phone Number</label><input id="coPhone" value="${escapeHtml(db.company.phoneNumber)}"></div>
+          </div>
+        </div>
       </div>
     `;
+
+    const payees = `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Payees</div>
+            <div class="card-sub">Edit bank details; Manager/Admin can confirm if changed.</div>
+          </div>
+        </div>
+
+        <table class="table">
+          <thead><tr><th>Payee</th><th>Bank</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${db.payees.map(p => {
+              const needs = p.bankChanged && !p.bankConfirmed;
+              const status = needs ? "warn" : (p.bankConfirmed ? "ok" : "info");
+              const highlight = (payeeFocus && payeeFocus === p.id) ? ` style="outline:2px solid rgba(77,131,255,.30); outline-offset:2px;"` : "";
+              return `
+                <tr${highlight}>
+                  <td><strong>${escapeHtml(p.name)}</strong><div class="muted">${escapeHtml(p.type)} • ${escapeHtml(p.id)}</div></td>
+                  <td class="muted">${escapeHtml(p.bank.bankName)} • ${escapeHtml(p.bank.sortCode)} • ${escapeHtml(p.bank.accountNumber)}</td>
+                  <td><span class="pill ${status}">${needs ? "Needs confirm" : (p.bankConfirmed ? "Confirmed" : "Unconfirmed")}</span></td>
+                  <td>
+                    <div class="hstack">
+                      ${perms().canEditBank ? `<button class="btn" data-action="edit-bank" data-payee-id="${escapeHtml(p.id)}">Edit bank</button>` : ``}
+                      ${(perms().canConfirmBank && needs) ? `<button class="btn primary" data-action="confirm-bank" data-payee-id="${escapeHtml(p.id)}">Confirm</button>` : ``}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    return `<div class="vstack"><div class="page-title">Company</div>${companyForm}${payees}</div>`;
   }
 
   function renderReports() {
-    const canExport = perms().canExport;
-    if (!canExport) {
-      return `
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Reports</div>
-              <div class="card-sub">CSV exports (restricted for this role).</div>
-            </div>
-          </div>
-          <div class="banner warn">CSV export is not allowed for this role.</div>
-        </div>
-      `;
+    if (!perms().canExport) {
+      return `<div class="card"><div class="card-title">Reports</div><div class="card-sub">CSV export is not allowed for this role.</div></div>`;
     }
-
     const btn = (label, key) => `<button class="btn primary" data-action="export-csv" data-csv="${escapeHtml(key)}">${escapeHtml(label)}</button>`;
-
     return `
-      <div class="card">
-        <div class="card-header">
+      <div class="vstack">
+        <div class="split">
           <div>
-            <div class="card-title">Reports</div>
-            <div class="card-sub">Export datasets as CSV for audit and accounting workflows.</div>
+            <div class="page-title">Reports</div>
+            <div class="muted">Export CSV datasets (downloaded in-browser).</div>
           </div>
         </div>
 
-        <div class="grid cols-3">
-          ${btn("Jobs CSV", "jobs")}
-          ${btn("Invoices CSV", "invoices")}
-          ${btn("Milestones CSV", "milestones")}
-          ${btn("Releases CSV", "releases")}
-          ${btn("Disputes CSV", "disputes")}
-          ${btn("Messages CSV", "messages")}
-          ${btn("Payees CSV", "payees")}
-          ${btn("Audit log CSV", "auditLog")}
-        </div>
-
-        <div class="sep"></div>
-        <div class="banner info">
-          Tip: CSV export is generated in-browser and downloaded locally. No backend is used.
+        <div class="card">
+          <div class="grid cols-3">
+            ${btn("Jobs CSV","jobs")}
+            ${btn("Invoices CSV","invoices")}
+            ${btn("Milestones CSV","milestones")}
+            ${btn("Releases CSV","releases")}
+            ${btn("Disputes CSV","disputes")}
+            ${btn("Messages CSV","messages")}
+            ${btn("Payees CSV","payees")}
+            ${btn("Audit Log CSV","auditLog")}
+          </div>
         </div>
       </div>
     `;
@@ -1853,22 +2372,31 @@
 
   function renderSettings() {
     const p = perms();
+    const testMode = !!db.meta.testMode;
+
+    const testModeBlock = `
+      <div class="card">
+        <div class="card-title">Test Mode</div>
+        <div class="card-sub">Planned real-app feature. Only Admin can toggle.</div>
+        <div class="sep"></div>
+        <div class="split">
+          <div class="muted">Status: <strong>${testMode ? "ON" : "OFF"}</strong></div>
+          ${p.canToggleTestMode
+            ? `<button class="btn primary" data-action="toggle-test-mode" data-on="${testMode ? "0" : "1"}">${testMode ? "Turn OFF" : "Turn ON"}</button>`
+            : `<button class="btn" disabled aria-disabled="true">Admin only</button>`}
+        </div>
+      </div>
+    `;
 
     return `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-title">Settings</div>
-            <div class="card-sub">Theme, demo data tools, and role-restricted actions.</div>
-          </div>
-        </div>
+      <div class="vstack">
+        <div class="page-title">Settings</div>
 
         <div class="grid cols-2">
           <div class="card">
             <div class="card-title">Appearance</div>
-            <div class="card-sub muted">System / light / dark</div>
+            <div class="card-sub">System / light / dark</div>
             <div class="sep"></div>
-
             <div class="field" style="max-width:340px;">
               <label for="themeSelect">Theme</label>
               <select id="themeSelect" data-action="theme-select">
@@ -1877,54 +2405,105 @@
                 <option value="dark"${ui.theme==="dark"?" selected":""}>Dark</option>
               </select>
             </div>
-
             <div class="muted" style="margin-top:10px;">Theme button cycles system → light → dark.</div>
           </div>
 
           <div class="card">
             <div class="card-title">Data tools</div>
-            <div class="card-sub muted">localStorage key: <code>approvehub_demo_db</code></div>
+            <div class="card-sub">localStorage key: <code>approvehub_demo_db</code></div>
             <div class="sep"></div>
-
             <div class="hstack">
-              ${p.canReset ? `<button class="btn danger" data-action="reset-demo">Reset demo</button>` : `<button class="btn danger" aria-disabled="true" disabled>Reset demo (not allowed)</button>`}
-              ${p.canExport ? `<button class="btn" data-action="export-db">Export JSON</button>` : `<button class="btn" aria-disabled="true" disabled>Export JSON (not allowed)</button>`}
-              ${p.canImport ? `<button class="btn" data-action="import-db">Import JSON</button>` : `<button class="btn" aria-disabled="true" disabled>Import JSON (not allowed)</button>`}
-            </div>
-
-            <div class="sep"></div>
-            <div class="banner info">
-              <strong>Tip:</strong> If something looks “stuck”, reset demo or clear the localStorage key.
+              ${p.canReset ? `<button class="btn danger" data-action="reset-demo">Reset demo</button>` : `<button class="btn danger" disabled aria-disabled="true">Reset (not allowed)</button>`}
+              ${p.canExport ? `<button class="btn" data-action="export-db">Export JSON</button>` : `<button class="btn" disabled aria-disabled="true">Export (not allowed)</button>`}
+              ${p.canImport ? `<button class="btn" data-action="import-db">Import JSON</button>` : `<button class="btn" disabled aria-disabled="true">Import (not allowed)</button>`}
             </div>
           </div>
         </div>
+
+        ${testModeBlock}
       </div>
     `;
   }
 
-  /* CONTINUES IN PART 6 */
-// PART 5 END
-
- // PART 6 START
   /* ---------------------------
-     DB Import
+     Import / reset / export
   --------------------------- */
-  function importDb(parsed) {
-    if (!parsed || typeof parsed !== "object") { toast("bad", "Import failed", "Invalid JSON object."); return; }
-    if (parsed.schemaVersion !== SCHEMA_VERSION) { toast("bad", "Schema mismatch", "This JSON does not match the current demo schemaVersion."); return; }
+  function resetDb(reason="Reset demo") {
+    db = defaultDb();
+    db.meta.lastResetReason = reason;
+    normalizeDb();
+    saveDb();
+    toast("ok","Demo reset","Demo data has been reset.");
+    log("reset_demo","db","root",null,{reason});
+    routeTo("#/dashboard");
+  }
 
+  function importDb(parsed) {
+    if (!parsed || typeof parsed !== "object") { toast("bad","Import failed","Invalid JSON object."); return; }
+    if (parsed.schemaVersion !== SCHEMA_VERSION) { toast("bad","Schema mismatch","schemaVersion does not match this demo."); return; }
     db = parsed;
+    normalizeDb();
     saveDb();
     closeModal();
-    toast("ok", "Imported", "Demo JSON imported.");
-    log("import_db", "db", "root", null, { note: "Imported" });
-
+    toast("ok","Imported","Demo JSON imported.");
+    log("import_db","db","root",null,{});
     ui.route = parseRoute();
     render();
   }
 
   /* ---------------------------
-     PDF / Print (html2pdf with safe fallback)
+     Savings modal
+  --------------------------- */
+  function openSavings(jobId=null) {
+    const { total, byJob } = savingsTotalsAllJobs();
+    const jobs = jobId ? [getJob(jobId)].filter(Boolean) : db.jobs.filter(j => j.status !== "completed");
+    const rows = jobs.map(j => {
+      const entries = (byJob[j.id] || []).map(e => {
+        const inv = getInvoice(e.invoiceId);
+        return `<div class="split"><div class="muted">${escapeHtml(inv ? inv.number : e.invoiceId)}</div><div><strong>${escapeHtml(formatGBP(e.diff))}</strong></div></div>`;
+      }).join("") || `<div class="muted">No invoices</div>`;
+      const jobTotal = (byJob[j.id] || []).reduce((s,x)=> s + Number(x.diff||0),0);
+      return `
+        <div class="card">
+          <div class="split">
+            <div><div class="card-title">${escapeHtml(j.name)}</div><div class="card-sub">${escapeHtml(j.location||"")}</div></div>
+            <span class="pill info">${escapeHtml(formatGBP(jobTotal))}</span>
+          </div>
+          <div class="sep"></div>
+          ${entries}
+        </div>
+      `;
+    }).join("");
+
+    openModal({
+      title: "Savings (Illustrative)",
+      ariaLabel: "Savings modal",
+      bodyHtml: `
+        <div class="card" style="border-color: rgba(240,207,99,.55); background: rgba(240,207,99,.14);">
+          <div class="split">
+            <div>
+              <div class="card-title">Estimated VAT difference (illustrative only)</div>
+              <div class="card-sub">Compares 20% VAT on full client payment vs VAT on fee pot only (illustration).</div>
+            </div>
+            <div style="font-size:22px;font-weight:900;">${escapeHtml(formatGBP(total))}</div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+        ${rows}
+
+        <div class="sep"></div>
+        <div class="card" style="border-color: rgba(240,207,99,.55); background: rgba(240,207,99,.14);">
+          <div style="font-weight:800;">VAT disclaimer</div>
+          <div class="muted" style="margin-top:6px;">${escapeHtml(VAT_DISCLAIMER)}</div>
+        </div>
+      `,
+      footerHtml: `<button class="btn" type="button" data-action="modal-close">Close</button>`
+    });
+  }
+
+  /* ---------------------------
+     PDF / Print (safe fallback)
   --------------------------- */
   function invoicePrintHtml(inv) {
     const job = getJob(inv.jobId);
@@ -1934,67 +2513,60 @@
       const p = getPayee(li.payeeId);
       return `
         <tr>
-          <td style="padding:8px 10px; border-bottom:1px solid #ddd;">
+          <td style="padding:8px 10px;border-bottom:1px solid #ddd;">
             <div style="font-weight:700;">${escapeHtml(li.description)}</div>
-            <div style="opacity:.75; font-size:12px;">${escapeHtml(p ? p.name : li.payeeId)} • ${escapeHtml(li.category)}</div>
+            <div style="opacity:.75;font-size:12px;">${escapeHtml(p ? p.name : li.payeeId)} • ${escapeHtml(li.category)}</div>
           </td>
-          <td style="padding:8px 10px; border-bottom:1px solid #ddd; text-align:right;">${escapeHtml(formatGBP(li.amount))}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #ddd;text-align:right;">${escapeHtml(formatGBP(li.amount))}</td>
         </tr>
       `;
     }).join("");
 
     return `
-      <div style="font-family: Inter, Arial, sans-serif; color:#111; padding:24px;">
-        <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">
+      <div style="font-family: Inter, Arial, sans-serif; padding:24px; color:#111;">
+        <div style="display:flex;justify-content:space-between;gap:16px;">
           <div>
-            <div style="font-size:20px; font-weight:900; letter-spacing:-0.02em;">ApproveHub</div>
-            <div style="opacity:.7; margin-top:4px;">Approvals & Project Payments (demo)</div>
+            <div style="font-size:20px;font-weight:900;">ApproveHub</div>
+            <div style="opacity:.75;">Approvals & Project Payments (demo)</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:18px; font-weight:900;">${escapeHtml(inv.number || "Invoice")}</div>
-            <div style="opacity:.7; margin-top:4px;">Created: ${escapeHtml(formatDate(inv.createdAt))}</div>
-            <div style="opacity:.7;">Job: ${escapeHtml(job ? job.name : inv.jobId)}</div>
+            <div style="font-size:18px;font-weight:900;">${escapeHtml(inv.number)}</div>
+            <div style="opacity:.75;">Job: ${escapeHtml(job ? job.name : inv.jobId)}</div>
+            <div style="opacity:.75;">Updated: ${escapeHtml(formatDate(inv.updatedAt))}</div>
           </div>
         </div>
 
-        <div style="margin-top:18px; border:1px solid #e5e7eb; border-radius:14px; padding:14px;">
+        <div style="margin-top:14px;border:1px solid #e5e7eb;border-radius:14px;padding:14px;">
           <div style="font-weight:800;">Summary</div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
-            <div style="opacity:.8;">Client payment before VAT</div>
-            <div style="text-align:right; font-weight:800;">${escapeHtml(formatGBP(t.clientPaymentBeforeVat))}</div>
-
-            <div style="opacity:.8;">Total to payees (trades + suppliers)</div>
-            <div style="text-align:right; font-weight:800;">${escapeHtml(formatGBP(t.totalToPayees))}</div>
-
-            <div style="opacity:.8;">Management fee pot (demo)</div>
-            <div style="text-align:right; font-weight:800;">${escapeHtml(formatGBP(t.feePot))}</div>
-
-            <div style="opacity:.8;">VAT on fee pot</div>
-            <div style="text-align:right; font-weight:900;">${escapeHtml(formatGBP(t.vatOnFee))}</div>
-
-            <div style="opacity:.8;">Grand total (client pays)</div>
-            <div style="text-align:right; font-weight:900; font-size:16px;">${escapeHtml(formatGBP(t.grandTotal))}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+            <div style="opacity:.8;">Client payment before VAT</div><div style="text-align:right;font-weight:800;">${escapeHtml(formatGBP(t.clientPaymentBeforeVat))}</div>
+            <div style="opacity:.8;">Trades total</div><div style="text-align:right;font-weight:800;">${escapeHtml(formatGBP(t.totalToTrades))}</div>
+            <div style="opacity:.8;">Suppliers total</div><div style="text-align:right;font-weight:800;">${escapeHtml(formatGBP(t.totalToSuppliers))}</div>
+            <div style="opacity:.8;">Main contractor</div><div style="text-align:right;font-weight:800;">${escapeHtml(formatGBP(t.mainContractorAmount))}</div>
+            <div style="opacity:.8;">Fee pot</div><div style="text-align:right;font-weight:800;">${escapeHtml(formatGBP(t.feePot))}</div>
+            <div style="opacity:.8;">VAT on fee pot</div><div style="text-align:right;font-weight:900;">${escapeHtml(formatGBP(t.vatOnFee))}</div>
+            <div style="opacity:.8;">Grand total</div><div style="text-align:right;font-weight:900;">${escapeHtml(formatGBP(t.grandTotal))}</div>
           </div>
 
-          <div style="margin-top:12px; font-size:12px; opacity:.8; border-top:1px dashed #e5e7eb; padding-top:10px;">
+          <div style="margin-top:10px;font-size:12px;opacity:.8;border-top:1px dashed #e5e7eb;padding-top:10px;">
             ${escapeHtml(VAT_DISCLAIMER)}
           </div>
         </div>
 
-        <div style="margin-top:18px; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden;">
-          <div style="padding:12px 14px; font-weight:800; background:#f5f7fb;">Line items</div>
-          <table style="width:100%; border-collapse:collapse;">
+        <div style="margin-top:14px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+          <div style="padding:12px 14px;font-weight:800;background:#f5f7fb;">Line items</div>
+          <table style="width:100%;border-collapse:collapse;">
             <thead>
               <tr>
-                <th style="text-align:left; padding:8px 10px; border-bottom:1px solid #ddd; font-size:12px; opacity:.7;">Description</th>
-                <th style="text-align:right; padding:8px 10px; border-bottom:1px solid #ddd; font-size:12px; opacity:.7;">Amount</th>
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;font-size:12px;opacity:.7;">Description</th>
+                <th style="text-align:right;padding:8px 10px;border-bottom:1px solid #ddd;font-size:12px;opacity:.7;">Amount</th>
               </tr>
             </thead>
-            <tbody>${items}</tbody>
+            <tbody>${items || ""}</tbody>
           </table>
         </div>
 
-        <div style="margin-top:18px; font-size:12px; opacity:.8;">
+        <div style="margin-top:14px;font-size:12px;opacity:.8;">
           Funds statement: ${escapeHtml(FUNDS_STATEMENT)}
         </div>
       </div>
@@ -2004,18 +2576,14 @@
   function printInvoice(inv) {
     const html = invoicePrintHtml(inv);
     const w = window.open("", "_blank", "noopener,noreferrer");
-    if (!w) {
-      toast("warn", "Popup blocked", "Allow popups to use print, or use Download PDF.");
-      return;
-    }
+    if (!w) { toast("warn","Popup blocked","Allow popups to print."); return; }
     w.document.open();
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(inv.number || "Invoice")} — Print</title></head><body>${html}<script>window.onload=()=>window.print();</script></body></html>`);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(inv.number)} — Print</title></head><body>${html}<script>window.onload=()=>window.print();</script></body></html>`);
     w.document.close();
   }
 
   function downloadInvoicePdf(inv) {
     const html = invoicePrintHtml(inv);
-
     const container = document.createElement("div");
     container.style.position = "fixed";
     container.style.left = "-99999px";
@@ -2030,36 +2598,24 @@
       if (window.html2pdf && typeof window.html2pdf === "function") {
         window.html2pdf()
           .from(container)
-          .set({
-            margin: 8,
-            filename,
-            html2canvas: { scale: 2 },
-            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-          })
+          .set({ margin: 8, filename, html2canvas: { scale: 2 }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } })
           .save()
-          .then(() => {
-            container.remove();
-            toast("ok", "PDF created", "Downloaded invoice PDF.");
-          })
-          .catch(() => {
-            container.remove();
-            toast("warn", "PDF fallback", "PDF tool unavailable. Opening print dialog instead.");
-            window.print();
-          });
+          .then(() => { container.remove(); toast("ok","PDF created","Downloaded invoice PDF."); })
+          .catch(() => { container.remove(); toast("warn","PDF fallback","PDF tool unavailable. Opening print."); window.print(); });
       } else {
         container.remove();
-        toast("warn", "PDF fallback", "PDF library missing. Opening print dialog instead.");
+        toast("warn","PDF fallback","PDF library missing. Opening print.");
         window.print();
       }
     } catch {
       container.remove();
-      toast("warn", "PDF fallback", "Could not generate PDF. Opening print dialog instead.");
+      toast("warn","PDF fallback","Could not generate PDF. Opening print.");
       window.print();
     }
   }
 
   /* ---------------------------
-     Invoice snapshots (share + regenerate PDF)
+     Snapshots (share + regen)
   --------------------------- */
   function createInvoiceSnapshot(inv) {
     const t = invoiceTotals(inv);
@@ -2071,12 +2627,12 @@
       payload: {
         number: inv.number,
         createdAt: inv.createdAt,
+        updatedAt: inv.updatedAt,
         clientPaymentBeforeVat: t.clientPaymentBeforeVat,
         vatRate: t.vatRate,
-        vatOnFee: t.vatOnFee,
-        grandTotal: t.grandTotal,
+        mainContractorAmount: t.mainContractorAmount,
         lineItems: (inv.lineItems || []).map(li => ({ ...li })),
-      },
+      }
     };
     db.snapshots.unshift(snap);
     saveDb();
@@ -2084,7 +2640,6 @@
   }
 
   function downloadSnapshotPdf(snapshot) {
-    // Recreate a minimal invoice-like object for printing
     const pseudo = {
       id: snapshot.invoiceId,
       jobId: snapshot.jobId,
@@ -2093,7 +2648,9 @@
       updatedAt: snapshot.createdAt,
       clientPaymentBeforeVat: snapshot.payload.clientPaymentBeforeVat,
       feeVatRate: snapshot.payload.vatRate,
+      mainContractorAmount: snapshot.payload.mainContractorAmount,
       lineItems: snapshot.payload.lineItems,
+      status: "approved",
     };
     downloadInvoicePdf(pseudo);
   }
@@ -2103,18 +2660,17 @@
       title: "Share invoice",
       ariaLabel: "Share invoice",
       bodyHtml: `
-        <div class="banner info">
-          This will post a message in the job thread with an <strong>invoice snapshot attachment</strong>.
+        <div class="card" style="border-color: rgba(77,131,255,.22); background: rgba(77,131,255,.06);">
+          This posts a message with an <strong>invoice snapshot attachment</strong>.
         </div>
         <div class="sep"></div>
         <div class="field">
           <label for="shareNote">Message (optional)</label>
-          <textarea id="shareNote" rows="3" placeholder="e.g., Please review this invoice summary before approvals."></textarea>
+          <textarea id="shareNote" rows="3" placeholder="e.g., Please review this invoice before approvals."></textarea>
         </div>
       `,
       footerHtml: `
-        <div class="muted">Snapshot supports “Regenerate PDF”.</div>
-        <div class="hstack">
+        <div class="hstack" style="justify-content:flex-end;">
           <button class="btn" type="button" data-action="modal-close">Cancel</button>
           <button class="btn primary" type="button" data-action="confirm-share-invoice" data-invoice-id="${escapeHtml(inv.id)}">Share</button>
         </div>
@@ -2123,24 +2679,7 @@
   }
 
   /* ---------------------------
-     Create release modal helper
-  --------------------------- */
-  function syncReleaseMilestones() {
-    const jobSel = $("#crJob");
-    const msSel = $("#crMilestone");
-    if (!jobSel || !msSel) return;
-
-    const job = getJob(jobSel.value);
-    const ms = job ? jobMilestones(job) : [];
-
-    msSel.innerHTML = ms.map(m => {
-      const suffix = m.evidenceRequired ? (m.evidenceProvided ? " • evidence ✓" : " • evidence missing") : "";
-      return `<option value="${escapeHtml(m.id)}">${escapeHtml(m.title)}${escapeHtml(suffix)}</option>`;
-    }).join("");
-  }
-
-  /* ---------------------------
-     View delegation + action handler
+     View delegation
   --------------------------- */
   function bindViewDelegationOnce() {
     const view = $("#view");
@@ -2159,60 +2698,78 @@
       const action = el.getAttribute("data-action");
       if (!action) return;
 
-      // pass value for selects
       const payload = { ...el.dataset };
       if (el instanceof HTMLSelectElement) payload.value = el.value;
       handleAction(action, payload);
     });
   }
 
+  /* ---------------------------
+     Actions
+  --------------------------- */
   function handleAction(action, data) {
-    // Filters
+    // filters
     if (action === "payments-filter") { routeTo(data.value ? `#/payments?job=${encodeURIComponent(data.value)}` : "#/payments"); return; }
     if (action === "disputes-filter") { routeTo(data.value ? `#/disputes?job=${encodeURIComponent(data.value)}` : "#/disputes"); return; }
     if (action === "messages-filter") { routeTo(data.value ? `#/messages?job=${encodeURIComponent(data.value)}` : "#/messages"); return; }
+    if (action === "pp-select") {
+      routeTo(`#/jobs/${encodeURIComponent(data.jobId)}?tab=payment&invoice=${encodeURIComponent(data.value||"")}`);
+      return;
+    }
 
-    // Theme
+    // theme
     if (action === "theme-select") {
       applyThemePref(data.value || "system");
       toast("info", "Theme", `Theme set to ${data.value || "system"}.`);
-      log("set_theme", "ui", "theme", null, { theme: data.value || "system" });
+      log("set_theme","ui","theme",null,{theme:data.value||"system"});
       return;
     }
 
-    // Data tools
+    // test mode
+    if (action === "toggle-test-mode") {
+      setTestMode(data.on === "1");
+      return;
+    }
+
+    // savings
+    if (action === "open-savings") {
+      openSavings(data.jobId || null);
+      return;
+    }
+
+    // data tools
     if (action === "reset-demo") {
-      if (!perms().canReset) { toast("bad", "Not allowed", "This role cannot reset demo data."); return; }
+      if (!perms().canReset) { toast("bad","Not allowed","This role cannot reset."); return; }
       openModal({
-        title: "Reset demo?",
-        ariaLabel: "Reset demo confirmation",
-        bodyHtml: `<div class="banner warn">This will overwrite current demo data stored in your browser.</div>`,
-        footerHtml: `<div class="muted">localStorage will be replaced.</div>
-          <div class="hstack">
-            <button class="btn" data-action="modal-close" type="button">Cancel</button>
-            <button class="btn danger" data-action="confirm-reset" type="button">Reset</button>
-          </div>`
+        title:"Reset demo?",
+        ariaLabel:"Reset demo",
+        bodyHtml:`<div class="card" style="border-color: rgba(225,96,91,.28); background: rgba(225,96,91,.10);">This overwrites demo data stored in your browser.</div>`,
+        footerHtml:`<div class="hstack" style="justify-content:flex-end;">
+          <button class="btn" data-action="modal-close" type="button">Cancel</button>
+          <button class="btn danger" data-action="confirm-reset" type="button">Reset</button>
+        </div>`
       });
       return;
     }
-
     if (action === "confirm-reset") { closeModal(); resetDb("User reset"); return; }
 
     if (action === "export-db") {
-      if (!perms().canExport) { toast("bad", "Not allowed", "This role cannot export data."); return; }
-      downloadText(`approvehub_demo_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(db, null, 2), "application/json");
-      toast("ok", "Exported", "Demo JSON exported.");
-      log("export_db", "db", "root", null, { bytes: JSON.stringify(db).length });
+      if (!perms().canExport) { toast("bad","Not allowed","This role cannot export."); return; }
+      downloadText(`approvehub_demo_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(db,null,2), "application/json");
+      toast("ok","Exported","Demo JSON exported.");
+      log("export_db","db","root",null,{bytes:JSON.stringify(db).length});
       return;
     }
 
     if (action === "import-db") {
-      if (!perms().canImport) { toast("bad", "Not allowed", "This role cannot import data."); return; }
+      if (!perms().canImport) { toast("bad","Not allowed","This role cannot import."); return; }
       openModal({
-        title: "Import demo JSON",
-        ariaLabel: "Import demo JSON",
-        bodyHtml: `
-          <div class="banner warn">Import will replace the current demo data in your browser.</div>
+        title:"Import demo JSON",
+        ariaLabel:"Import demo JSON",
+        bodyHtml:`
+          <div class="card" style="border-color: rgba(240,207,99,.55); background: rgba(240,207,99,.14);">
+            Import will replace current demo data in your browser.
+          </div>
           <div class="sep"></div>
           <div class="field">
             <label for="importFile">Choose JSON file</label>
@@ -2220,56 +2777,58 @@
             <div class="muted">schemaVersion expected: ${SCHEMA_VERSION}</div>
           </div>
         `,
-        footerHtml: `<div class="muted">After import, the app will refresh.</div><button class="btn" type="button" data-action="modal-close">Close</button>`
+        footerHtml:`<button class="btn" type="button" data-action="modal-close">Close</button>`
       });
       return;
     }
 
-    // Jobs
-    if (action === "create-job") {
-      if (!perms().canCreateJob) { toast("bad", "Not allowed", "This role cannot create jobs."); return; }
+    // company save/cancel
+    if (action === "company-cancel") { render(); toast("info","Cancelled","Reverted to saved values."); return; }
+    if (action === "company-save") {
+      db.company.companyName = String($("#coName")?.value || "").trim() || db.company.companyName;
+      db.company.vatNumber = String($("#coVat")?.value || "").trim() || db.company.vatNumber;
+      db.company.companyRegNumber = String($("#coReg")?.value || "").trim() || db.company.companyRegNumber;
+      db.company.utrNumber = String($("#coUtr")?.value || "").trim() || db.company.utrNumber;
+      db.company.nationalInsuranceNumber = String($("#coNi")?.value || "").trim() || db.company.nationalInsuranceNumber;
+      db.company.companyAddress = String($("#coAddr")?.value || "").trim() || db.company.companyAddress;
+      db.company.billingAddress = String($("#coBill")?.value || "").trim() || db.company.billingAddress;
+      db.company.phoneNumber = String($("#coPhone")?.value || "").trim() || db.company.phoneNumber;
+      saveDb();
+      toast("ok","Saved","Company details updated.");
+      log("save_company","company","root",null,{});
+      render();
+      return;
+    }
 
+    // create job
+    if (action === "create-job") {
+      if (!perms().canCreateJob) { toast("bad","Not allowed","This role cannot create jobs."); return; }
       openModal({
-        title: "Create job",
-        ariaLabel: "Create job",
-        bodyHtml: `
+        title:"Create job",
+        ariaLabel:"Create job",
+        bodyHtml:`
           <div class="grid cols-2">
-            <div class="field">
-              <label for="cjName">Job name</label>
-              <input id="cjName" type="text" placeholder="e.g., Loft Conversion — West Wickham" />
-            </div>
-            <div class="field">
-              <label for="cjClient">Client name</label>
-              <input id="cjClient" type="text" placeholder="e.g., A. Patel" />
-            </div>
-            <div class="field">
-              <label for="cjAddress">Address (demo)</label>
-              <input id="cjAddress" type="text" placeholder="e.g., BR4 (demo)" />
-            </div>
-            <div class="field">
-              <label for="cjDesc">Short description</label>
-              <input id="cjDesc" type="text" placeholder="Brief scope summary" />
-            </div>
+            <div class="field"><label for="cjName">Job name</label><input id="cjName" placeholder="e.g., Riverside Apartments" /></div>
+            <div class="field"><label for="cjLoc">Location</label><input id="cjLoc" placeholder="e.g., Central City" /></div>
+            <div class="field"><label for="cjClient">Client name</label><input id="cjClient" placeholder="e.g., A. Patel" /></div>
+            <div class="field"><label for="cjDesc">Short description</label><input id="cjDesc" placeholder="Brief scope summary" /></div>
           </div>
         `,
-        footerHtml: `
-          <div class="muted">A starter thread will be created automatically.</div>
-          <div class="hstack">
-            <button class="btn" type="button" data-action="modal-close">Cancel</button>
-            <button class="btn primary" type="button" data-action="confirm-create-job">Create</button>
+        footerHtml:`
+          <div class="hstack" style="justify-content:flex-end;">
+            <button class="btn" data-action="modal-close" type="button">Cancel</button>
+            <button class="btn primary" data-action="confirm-create-job" type="button">Create</button>
           </div>
         `
       });
       return;
     }
-
     if (action === "confirm-create-job") {
       const name = String($("#cjName")?.value || "").trim();
+      const location = String($("#cjLoc")?.value || "").trim();
       const clientName = String($("#cjClient")?.value || "").trim();
-      const address = String($("#cjAddress")?.value || "").trim();
       const description = String($("#cjDesc")?.value || "").trim();
-
-      if (!name || !clientName) { toast("warn", "Missing fields", "Please enter a job name and client name."); return; }
+      if (!name) { toast("warn","Missing","Enter a job name."); return; }
 
       const jobId = uid("job");
       const threadId = uid("thr");
@@ -2279,8 +2838,9 @@
       db.jobs.unshift({
         id: jobId,
         name,
-        clientName,
-        address: address || "(demo)",
+        location: location || "Demo location",
+        clientName: clientName || "Client (demo)",
+        address: location || "Demo address",
         status: "open",
         archived: false,
         createdAt: nowIso(),
@@ -2299,75 +2859,63 @@
         id: invId,
         jobId,
         number: `INV-${String(Math.floor(Math.random()*90000)+10000)}`,
+        status: "draft",
         createdAt: nowIso(),
         updatedAt: nowIso(),
         clientPaymentBeforeVat: 5000,
         feeVatRate: 20,
-        lineItems: [{ id: uid("li"), payeeId: "pay_oakbeam", category: "contractor", description: "Starter item", amount: 1200 }],
+        mainContractorAmount: 1000,
+        lineItems: [
+          { id: uid("li"), payeeId: "pay_oakbeam", category: "contractor", description: "Starter trade", amount: 1200 }
+        ],
       });
 
-      db.messages.push({ id: uid("msg"), threadId, jobId, ts: nowIso(), byRole: ui.role, text: "Job created (demo). Use this thread for updates and approvals.", attachments: [] });
+      db.messages.push({ id: uid("msg"), threadId, jobId, ts: nowIso(), byRole: ui.role, text: "Job created (demo).", attachments: [] });
 
       saveDb();
       closeModal();
-      toast("ok", "Job created", "Job created with a starter milestone and invoice.");
-      log("create_job", "job", jobId, jobId, { name });
-      routeTo(`#/jobs/${jobId}`);
+      toast("ok","Job created","Created with a starter invoice.");
+      log("create_job","job",jobId,jobId,{name});
+      routeTo(`#/jobs/${jobId}?tab=invoices`);
       return;
     }
 
+    // edit job / archive
     if (action === "edit-job") {
       const job = getJob(data.jobId);
       if (!job) return;
-
       openModal({
-        title: "Edit job",
-        ariaLabel: "Edit job",
-        bodyHtml: `
+        title:"Edit job",
+        ariaLabel:"Edit job",
+        bodyHtml:`
           <div class="grid cols-2">
-            <div class="field">
-              <label for="ejName">Job name</label>
-              <input id="ejName" type="text" value="${escapeHtml(job.name)}" />
-            </div>
-            <div class="field">
-              <label for="ejClient">Client name</label>
-              <input id="ejClient" type="text" value="${escapeHtml(job.clientName)}" />
-            </div>
-            <div class="field">
-              <label for="ejAddress">Address</label>
-              <input id="ejAddress" type="text" value="${escapeHtml(job.address)}" />
-            </div>
-            <div class="field">
-              <label for="ejDesc">Description</label>
-              <input id="ejDesc" type="text" value="${escapeHtml(job.description || "")}" />
-            </div>
+            <div class="field"><label for="ejName">Job name</label><input id="ejName" value="${escapeHtml(job.name)}" /></div>
+            <div class="field"><label for="ejLoc">Location</label><input id="ejLoc" value="${escapeHtml(job.location||"")}" /></div>
+            <div class="field"><label for="ejClient">Client</label><input id="ejClient" value="${escapeHtml(job.clientName||"")}" /></div>
+            <div class="field"><label for="ejDesc">Description</label><input id="ejDesc" value="${escapeHtml(job.description||"")}" /></div>
           </div>
         `,
-        footerHtml: `
-          <div class="muted">Updates local demo data only.</div>
-          <div class="hstack">
-            <button class="btn" type="button" data-action="modal-close">Cancel</button>
-            <button class="btn primary" type="button" data-action="confirm-edit-job" data-job-id="${escapeHtml(job.id)}">Save</button>
+        footerHtml:`
+          <div class="hstack" style="justify-content:flex-end;">
+            <button class="btn" data-action="modal-close" type="button">Cancel</button>
+            <button class="btn primary" data-action="confirm-edit-job" data-job-id="${escapeHtml(job.id)}" type="button">Save</button>
           </div>
         `
       });
       return;
     }
-
     if (action === "confirm-edit-job") {
       const job = getJob(data.jobId);
       if (!job) return;
-
       job.name = String($("#ejName")?.value || job.name).trim();
+      job.location = String($("#ejLoc")?.value || job.location).trim();
       job.clientName = String($("#ejClient")?.value || job.clientName).trim();
-      job.address = String($("#ejAddress")?.value || job.address).trim();
       job.description = String($("#ejDesc")?.value || job.description).trim();
       job.updatedAt = nowIso();
-
       saveDb();
       closeModal();
-      toast("ok", "Job updated", "Job details saved.");
-      log("edit_job", "job", job.id, job.id, { name: job.name });
+      toast("ok","Saved","Job updated.");
+      log("edit_job","job",job.id,job.id,{});
       render();
       return;
     }
@@ -2378,89 +2926,174 @@
       job.archived = action === "archive-job";
       job.updatedAt = nowIso();
       saveDb();
-      toast("ok", job.archived ? "Archived" : "Unarchived", `Job ${job.archived ? "archived" : "unarchived"}.`);
-      log(job.archived ? "archive_job" : "unarchive_job", "job", job.id, job.id, {});
+      toast("ok", job.archived ? "Archived" : "Unarchived", "Job updated.");
+      log(job.archived ? "archive_job" : "unarchive_job","job",job.id,job.id,{});
       render();
       return;
     }
 
     if (action === "export-job") {
-      if (!perms().canExport) { toast("bad", "Not allowed", "This role cannot export job bundles."); return; }
+      if (!perms().canExport) { toast("bad","Not allowed","This role cannot export."); return; }
       const job = getJob(data.jobId);
       if (!job) return;
-
       const bundle = { job, milestones: jobMilestones(job), invoices: jobInvoices(job), releases: jobReleases(job), disputes: jobDisputes(job), messages: jobThreadMessages(job) };
-      downloadText(`approvehub_job_${job.id}.json`, JSON.stringify(bundle, null, 2), "application/json");
-      toast("ok", "Exported", "Job bundle exported.");
-      log("export_job_bundle", "job", job.id, job.id, { size: JSON.stringify(bundle).length });
+      downloadText(`approvehub_job_${job.id}.json`, JSON.stringify(bundle,null,2), "application/json");
+      toast("ok","Exported","Job bundle exported.");
+      log("export_job_bundle","job",job.id,job.id,{size:JSON.stringify(bundle).length});
       return;
     }
 
+    // milestones evidence
     if (action === "toggle-evidence") {
       const ms = getMilestone(data.msId);
       if (!ms) return;
       ms.evidenceProvided = !ms.evidenceProvided;
       saveDb();
-      toast("ok", "Milestone updated", `Evidence marked as ${ms.evidenceProvided ? "provided" : "missing"}.`);
-      log("toggle_evidence", "milestone", ms.id, ms.jobId, { evidenceProvided: ms.evidenceProvided });
+      toast("ok","Milestone updated", `Evidence marked ${ms.evidenceProvided ? "provided" : "missing"}.`);
+      log("toggle_evidence","milestone",ms.id,ms.jobId,{evidenceProvided: ms.evidenceProvided});
       render();
       return;
     }
 
-    // Invoice actions
+    // add invoice (tile CTA)
+    if (action === "add-invoice") {
+      const job = getJob(data.jobId);
+      if (!job) return;
+      const invId = uid("inv");
+      const invNum = `INV-${String(Math.floor(Math.random()*90000)+10000)}`;
+      db.invoices.unshift({
+        id: invId,
+        jobId: job.id,
+        number: invNum,
+        status: "draft",
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        clientPaymentBeforeVat: 5000,
+        feeVatRate: 20,
+        mainContractorAmount: 1000,
+        lineItems: [],
+      });
+      job.invoiceIds = Array.from(new Set([...(job.invoiceIds||[]), invId]));
+      job.updatedAt = nowIso();
+      saveDb();
+      toast("ok","Invoice added", invNum);
+      log("add_invoice","invoice",invId,job.id,{});
+      routeTo(`#/invoices/${invId}`);
+      return;
+    }
+
+    // invoice save / revert
     if (action === "save-invoice") {
-      if (!perms().canEditInvoice) { toast("bad", "Not allowed", "This role cannot edit invoices."); return; }
+      if (!perms().canEditInvoice) { toast("bad","Not allowed","This role cannot edit invoices."); return; }
       const inv = getInvoice(data.invoiceId);
       if (!inv) return;
 
       const beforeVat = Number($("#invBeforeVat")?.value || inv.clientPaymentBeforeVat || 0);
       const vatRate = Number($("#invVatRate")?.value || inv.feeVatRate || 20);
+      const mc = Number($("#invMainContractor")?.value || inv.mainContractorAmount || 0);
+      const st = String($("#invStatus")?.value || inv.status || "draft");
 
       inv.clientPaymentBeforeVat = Math.max(0, Math.round(beforeVat * 100) / 100);
       inv.feeVatRate = clamp(Math.round(vatRate), 0, 100);
+      inv.mainContractorAmount = Math.max(0, Math.round(mc * 100) / 100);
+      inv.status = ["draft","ready","approved"].includes(st) ? st : "draft";
       inv.updatedAt = nowIso();
 
       saveDb();
-      toast("ok", "Saved", "Invoice updated.");
-      log("edit_invoice", "invoice", inv.id, inv.jobId, { clientPaymentBeforeVat: inv.clientPaymentBeforeVat, feeVatRate: inv.feeVatRate });
+      toast("ok","Saved","Invoice updated.");
+      log("edit_invoice","invoice",inv.id,inv.jobId,{});
+      render();
+      return;
+    }
+    if (action === "revert-invoice") { render(); toast("info","Cancelled","Reverted to saved values."); return; }
+
+    // line items add/remove
+    if (action === "add-line-item") {
+      if (!perms().canEditInvoice) { toast("bad","Not allowed","This role cannot edit invoices."); return; }
+      const inv = getInvoice(data.invoiceId);
+      if (!inv) return;
+
+      openModal({
+        title:"Add line item",
+        ariaLabel:"Add line item",
+        bodyHtml:`
+          <div class="grid cols-2">
+            <div class="field">
+              <label for="liPayee">Payee</label>
+              <select id="liPayee">
+                ${db.payees.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.type)})</option>`).join("")}
+              </select>
+            </div>
+            <div class="field">
+              <label for="liCat">Category</label>
+              <select id="liCat">
+                <option value="contractor">contractor</option>
+                <option value="supplier">supplier</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="liDesc">Description</label>
+              <input id="liDesc" placeholder="e.g., Electrical works" />
+            </div>
+            <div class="field">
+              <label for="liAmt">Amount</label>
+              <input id="liAmt" type="number" step="0.01" inputmode="decimal" placeholder="0.00" />
+            </div>
+          </div>
+        `,
+        footerHtml:`
+          <div class="hstack" style="justify-content:flex-end;">
+            <button class="btn" data-action="modal-close" type="button">Cancel</button>
+            <button class="btn primary" data-action="confirm-add-line-item" data-invoice-id="${escapeHtml(inv.id)}" type="button">Add</button>
+          </div>
+        `
+      });
+      return;
+    }
+
+    if (action === "confirm-add-line-item") {
+      const inv = getInvoice(data.invoiceId);
+      if (!inv) return;
+      const payeeId = String($("#liPayee")?.value || "").trim();
+      const category = String($("#liCat")?.value || "contractor").trim();
+      const description = String($("#liDesc")?.value || "").trim() || "Line item";
+      const amount = Math.max(0, Number($("#liAmt")?.value || 0));
+
+      inv.lineItems.push({ id: uid("li"), payeeId, category, description, amount: Math.round(amount*100)/100 });
+      inv.updatedAt = nowIso();
+      saveDb();
+      closeModal();
+      toast("ok","Added","Line item added.");
+      log("add_line_item","invoice",inv.id,inv.jobId,{});
       render();
       return;
     }
 
-    if (action === "revert-invoice") { render(); toast("info", "Reverted", "Invoice inputs reverted to saved values."); return; }
-
-    if (action === "print-invoice") {
+    if (action === "remove-line-item") {
+      if (!perms().canEditInvoice) { toast("bad","Not allowed","This role cannot edit invoices."); return; }
       const inv = getInvoice(data.invoiceId);
       if (!inv) return;
-      printInvoice(inv);
-      log("print_invoice", "invoice", inv.id, inv.jobId, {});
+      inv.lineItems = (inv.lineItems||[]).filter(li => li.id !== data.liId);
+      inv.updatedAt = nowIso();
+      saveDb();
+      toast("ok","Removed","Line item removed.");
+      log("remove_line_item","invoice",inv.id,inv.jobId,{liId:data.liId});
+      render();
       return;
     }
 
-    if (action === "download-pdf") {
-      const inv = getInvoice(data.invoiceId);
-      if (!inv) return;
-      downloadInvoicePdf(inv);
-      log("download_pdf", "invoice", inv.id, inv.jobId, {});
-      return;
-    }
-
-    if (action === "share-invoice") {
-      const inv = getInvoice(data.invoiceId);
-      if (!inv) return;
-      openShareInvoice(inv);
-      return;
-    }
+    // pdf/print/share
+    if (action === "print-invoice") { const inv = getInvoice(data.invoiceId); if (!inv) return; printInvoice(inv); log("print_invoice","invoice",inv.id,inv.jobId,{}); return; }
+    if (action === "download-pdf") { const inv = getInvoice(data.invoiceId); if (!inv) return; downloadInvoicePdf(inv); log("download_pdf","invoice",inv.id,inv.jobId,{}); return; }
+    if (action === "share-invoice") { const inv = getInvoice(data.invoiceId); if (!inv) return; openShareInvoice(inv); return; }
 
     if (action === "confirm-share-invoice") {
       const inv = getInvoice(data.invoiceId);
       if (!inv) return;
-
       const job = getJob(inv.jobId);
       if (!job) return;
-
       const note = String($("#shareNote")?.value || "").trim();
-      const snapshotId = createInvoiceSnapshot(inv);
+      const snapId = createInvoiceSnapshot(inv);
 
       db.messages.push({
         id: uid("msg"),
@@ -2469,469 +3102,176 @@
         ts: nowIso(),
         byRole: ui.role,
         text: note || `Shared invoice snapshot for ${inv.number}.`,
-        attachments: [{ type: "invoice_snapshot", name: `${inv.number} snapshot`, invoiceId: inv.id, snapshotId }],
+        attachments: [{ type:"invoice_snapshot", name:`${inv.number} snapshot`, invoiceId: inv.id, snapshotId: snapId }],
       });
 
       saveDb();
       closeModal();
-      toast("ok", "Shared", "Invoice snapshot added to the job thread.");
-      log("share_invoice", "invoice", inv.id, inv.jobId, { snapshotId });
+      toast("ok","Shared","Invoice snapshot posted to thread.");
+      log("share_invoice","invoice",inv.id,inv.jobId,{snapshotId:snapId});
       routeTo(`#/messages?job=${encodeURIComponent(job.id)}`);
       return;
     }
 
     if (action === "regen-pdf") {
       const snap = db.snapshots.find(s => s.id === data.snapshotId);
-      if (!snap) { toast("bad", "Not found", "Snapshot not found."); return; }
+      if (!snap) { toast("bad","Not found","Snapshot not found."); return; }
       downloadSnapshotPdf(snap);
-      log("regen_pdf", "snapshot", snap.id, snap.jobId, { invoiceId: snap.invoiceId });
+      log("regen_pdf","snapshot",snap.id,snap.jobId,{});
       return;
     }
 
-    // Releases / Payments
-    if (action === "create-release") {
-      openModal({
-        title: "Create release request",
-        ariaLabel: "Create release request",
-        bodyHtml: `
-          <div class="grid cols-2">
-            <div class="field">
-              <label for="crJob">Job</label>
-              <select id="crJob">
-                ${db.jobs.filter(j => !j.archived).map(j => `<option value="${escapeHtml(j.id)}"${(data.jobId && j.id===data.jobId)?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}
-              </select>
-            </div>
-            <div class="field">
-              <label for="crMilestone">Milestone</label>
-              <select id="crMilestone"></select>
-              <div class="muted">Evidence requirements will apply to “Send to partner”.</div>
-            </div>
-            <div class="field">
-              <label for="crTitle">Title</label>
-              <input id="crTitle" type="text" placeholder="e.g., Release — First fix stage" />
-            </div>
-            <div class="field">
-              <label for="crNotes">Notes</label>
-              <input id="crNotes" type="text" placeholder="Short note" />
-            </div>
-          </div>
-
-          <div class="sep"></div>
-          <div class="card">
-            <div class="card-title">Payee splits</div>
-            <div class="card-sub">Add amounts to each payee.</div>
-            <div class="sep"></div>
-            ${db.payees.map(p => `
-              <div class="split">
-                <div>
-                  <strong>${escapeHtml(p.name)}</strong>
-                  <div class="muted">${escapeHtml(p.type)} • Sort ${escapeHtml(p.bank.sortCode)}</div>
-                </div>
-                <div class="field" style="max-width:220px;">
-                  <label class="sr-only" for="cr_${escapeHtml(p.id)}">Amount</label>
-                  <input id="cr_${escapeHtml(p.id)}" type="number" step="0.01" inputmode="decimal" placeholder="0.00" />
-                </div>
-              </div>
-              <div class="sep"></div>
-            `).join("")}
-          </div>
-
-          <div class="banner info"><strong>Flow:</strong> Draft → Submitted → Manager approved → Client approved → Sent to partner → Released</div>
-        `,
-        footerHtml: `
-          <div class="muted">Created as Draft.</div>
-          <div class="hstack">
-            <button class="btn" type="button" data-action="modal-close">Cancel</button>
-            <button class="btn primary" type="button" data-action="confirm-create-release">Create</button>
-          </div>
-        `
-      });
-
-      // populate milestones and bind change
-      syncReleaseMilestones();
-      const jobSel = $("#crJob");
-      if (jobSel) jobSel.addEventListener("change", () => syncReleaseMilestones());
-      return;
-    }
-
-    if (action === "confirm-create-release") {
-      const jobId = String($("#crJob")?.value || "").trim();
-      const msId = String($("#crMilestone")?.value || "").trim();
-      const title = String($("#crTitle")?.value || "").trim() || "Release — Draft";
-      const notes = String($("#crNotes")?.value || "").trim();
-
-      const job = getJob(jobId);
-      if (!job) { toast("bad", "Missing job", "Please select a job."); return; }
-
-      const splits = [];
-      for (const p of db.payees) {
-        const val = Number($(`#cr_${p.id}`)?.value || 0);
-        if (val > 0) splits.push({ payeeId: p.id, amount: Math.round(val * 100) / 100 });
-      }
-
-      const relId = uid("rel");
-      const inv = job.invoiceIds?.[0] ? getInvoice(job.invoiceIds[0]) : null;
-
-      const rel = {
-        id: relId,
-        jobId,
-        invoiceId: inv ? inv.id : null,
-        milestoneId: msId || (job.milestoneIds?.[0] || null),
-        title,
-        status: "Draft",
-        approvals: { manager: false, client: false },
-        sentToPartnerAt: null,
-        releasedAt: null,
-        createdAt: nowIso(),
-        updatedAt: nowIso(),
-        payeeSplits: splits.length ? splits : [{ payeeId: "pay_oakbeam", amount: 1000 }],
-        notes,
-      };
-
-      db.releases.unshift(rel);
-      job.releaseIds = Array.from(new Set([...(job.releaseIds || []), relId]));
-      job.updatedAt = nowIso();
-
+    // messages post
+    if (action === "post-message") {
+      const job = getJob(data.jobId);
+      if (!job) return;
+      const text = String($("#msgText")?.value || "").trim();
+      if (!text) { toast("warn","Empty","Write a message first."); return; }
+      db.messages.push({ id: uid("msg"), threadId: job.threadId, jobId: job.id, ts: nowIso(), byRole: ui.role, text, attachments: [] });
       saveDb();
-      closeModal();
-      toast("ok", "Release created", "Created as Draft.");
-      log("create_release", "release", relId, jobId, { title });
-      routeTo(`#/payments?job=${encodeURIComponent(jobId)}`);
-      return;
-    }
-
-    if (action === "view-release") {
-      const rel = getRelease(data.releaseId);
-      if (!rel) return;
-
-      const job = getJob(rel.jobId);
-      const ms = rel.milestoneId ? getMilestone(rel.milestoneId) : null;
-      const amount = (rel.payeeSplits || []).reduce((s, x) => s + Number(x.amount || 0), 0);
-      const blockers = releaseBlockers(rel);
-
-      openModal({
-        title: "Release details",
-        ariaLabel: "Release details",
-        bodyHtml: `
-          <div class="banner info"><strong>${escapeHtml(rel.title)}</strong><div class="muted">${escapeHtml(job ? job.name : rel.jobId)}</div></div>
-          <div class="sep"></div>
-          <div class="grid cols-2">
-            <div class="card">
-              <div class="card-title">Status</div>
-              <div class="card-sub muted">${escapeHtml(rel.status)}</div>
-              <div class="sep"></div>
-              <div class="muted">Mgr approval: <strong>${rel.approvals.manager ? "Yes" : "No"}</strong></div>
-              <div class="muted">Client approval: <strong>${rel.approvals.client ? "Yes" : "No"}</strong></div>
-              <div class="muted">Sent to partner: <strong>${rel.sentToPartnerAt ? "Yes" : "No"}</strong></div>
-              <div class="muted">Released: <strong>${rel.releasedAt ? "Yes" : "No"}</strong></div>
-            </div>
-            <div class="card">
-              <div class="card-title">Linked milestone</div>
-              <div class="card-sub muted">${escapeHtml(ms ? ms.title : "—")}</div>
-              <div class="sep"></div>
-              ${ms ? `<div class="muted">Evidence required: <strong>${ms.evidenceRequired ? "Yes" : "No"}</strong></div>
-                     <div class="muted">Evidence provided: <strong>${ms.evidenceProvided ? "Yes" : "No"}</strong></div>` : `<div class="muted">No milestone linked.</div>`}
-            </div>
-          </div>
-
-          <div class="sep"></div>
-          <div class="card">
-            <div class="card-title">Payee splits</div>
-            <div class="card-sub muted">Total: ${escapeHtml(formatGBP(amount))}</div>
-            <div class="sep"></div>
-            ${(rel.payeeSplits || []).map(s => {
-              const p = getPayee(s.payeeId);
-              return `<div class="split"><div>${escapeHtml(p ? p.name : s.payeeId)}</div><div><strong>${escapeHtml(formatGBP(s.amount))}</strong></div></div>`;
-            }).join("")}
-          </div>
-
-          <div class="sep"></div>
-          ${blockers.length ? `<div class="banner bad"><strong>Blockers (for sending):</strong><ul>${blockers.map(b => `<li>${escapeHtml(b)}</li>`).join("")}</ul></div>` : `<div class="banner info"><strong>No blockers</strong> for sending.</div>`}
-          <div class="sep"></div>
-          <div class="banner info"><strong>Funds statement:</strong> ${escapeHtml(FUNDS_STATEMENT)}</div>
-        `,
-        footerHtml: `
-          <div class="muted">Actions are performed in the Payments page.</div>
-          <div class="hstack">
-            <a class="btn ghost" href="#/payments?job=${encodeURIComponent(rel.jobId)}">Open payments</a>
-            <button class="btn" type="button" data-action="modal-close">Close</button>
-          </div>
-        `
-      });
-      return;
-    }
-
-    if (action === "submit-release") {
-      const rel = getRelease(data.releaseId);
-      if (!rel) return;
-      if (rel.status !== "Draft") { toast("warn", "Not valid", "Only Draft releases can be submitted."); return; }
-      rel.status = "Submitted";
-      rel.updatedAt = nowIso();
-      saveDb();
-      toast("ok", "Submitted", "Release submitted for approvals.");
-      log("submit_release", "release", rel.id, rel.jobId, {});
+      toast("ok","Posted","Message posted.");
+      log("post_message","message","thread",job.id,{length:text.length});
       render();
       return;
     }
 
-    if (action === "approve-release-manager") {
-      const rel = getRelease(data.releaseId);
-      if (!rel) return;
-      if (!perms().canApproveManager) { toast("bad", "Not allowed", "This role cannot manager-approve releases."); return; }
-      if (rel.status !== "Submitted") { toast("warn", "Not valid", "Manager approval is available after submission."); return; }
-      rel.approvals.manager = true;
-      rel.status = "Manager approved";
-      rel.updatedAt = nowIso();
-      saveDb();
-      toast("ok", "Approved", "Manager approval recorded.");
-      log("approve_release_manager", "release", rel.id, rel.jobId, {});
-      render();
-      return;
-    }
-
-    if (action === "approve-release-client") {
-      const rel = getRelease(data.releaseId);
-      if (!rel) return;
-      if (!perms().canApproveClient) { toast("bad", "Not allowed", "This role cannot client-approve releases."); return; }
-      if (rel.status !== "Manager approved") { toast("warn", "Not valid", "Client approval is available after manager approval."); return; }
-      rel.approvals.client = true;
-      rel.status = "Client approved";
-      rel.updatedAt = nowIso();
-      saveDb();
-      toast("ok", "Approved", "Client approval recorded.");
-      log("approve_release_client", "release", rel.id, rel.jobId, {});
-      render();
-      return;
-    }
-
-    if (action === "send-to-partner") {
-      const rel = getRelease(data.releaseId);
-      if (!rel) return;
-      if (!perms().canSendToPartner) { toast("bad", "Not allowed", "This role cannot send to partner."); return; }
-      if (rel.status !== "Client approved") { toast("warn", "Not ready", "Release must be Client approved before sending."); return; }
-
-      const blockers = releaseBlockers(rel);
-      if (blockers.length) {
-        toast("bad", "Blocked", blockers[0]);
-        openModal({
-          title: "Release blocked",
-          ariaLabel: "Release blocked",
-          bodyHtml: `
-            <div class="banner bad"><strong>Cannot “Send to partner” yet.</strong></div>
-            <div class="sep"></div>
-            <div class="card">
-              <div class="card-title">Block reasons</div>
-              <div class="sep"></div>
-              <ul>${blockers.map(b => `<li>${escapeHtml(b)}</li>`).join("")}</ul>
-            </div>
-            <div class="sep"></div>
-            <div class="banner info"><strong>Funds statement:</strong> ${escapeHtml(FUNDS_STATEMENT)}</div>
-          `,
-          footerHtml: `<div class="muted">Fix blockers then try again.</div><button class="btn" type="button" data-action="modal-close">Close</button>`
-        });
-        log("send_to_partner_blocked", "release", rel.id, rel.jobId, { blockers });
-        return;
-      }
-
-      rel.status = "Sent to partner";
-      rel.sentToPartnerAt = nowIso();
-      rel.updatedAt = nowIso();
-      saveDb();
-      toast("ok", "Sent", "Release sent to escrow/PBA partner (demo).");
-      log("send_to_partner", "release", rel.id, rel.jobId, {});
-      render();
-      return;
-    }
-
-    if (action === "mark-released") {
-      const rel = getRelease(data.releaseId);
-      if (!rel) return;
-      if (!perms().canMarkReleased) { toast("bad", "Not allowed", "This role cannot mark releases as released."); return; }
-      if (rel.status !== "Sent to partner") { toast("warn", "Not valid", "Must be sent to partner first."); return; }
-      rel.status = "Released";
-      rel.releasedAt = nowIso();
-      rel.updatedAt = nowIso();
-      saveDb();
-      toast("ok", "Released", "Release marked as released (demo).");
-      log("mark_released", "release", rel.id, rel.jobId, {});
-      render();
-      return;
-    }
-
-    // Disputes
+    // disputes
     if (action === "create-dispute") {
       const jobId = data.jobId || "";
       openModal({
-        title: "Create dispute",
-        ariaLabel: "Create dispute",
-        bodyHtml: `
-          <div class="grid cols-2">
-            <div class="field">
-              <label for="cdJob">Job</label>
-              <select id="cdJob">
-                ${db.jobs.filter(j => !j.archived).map(j => `<option value="${escapeHtml(j.id)}"${jobId && j.id===jobId?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}
-              </select>
-            </div>
-            <div class="field">
-              <label for="cdTitle">Title</label>
-              <input id="cdTitle" type="text" placeholder="e.g., Client query: scope clarification" />
-            </div>
+        title:"Create dispute",
+        ariaLabel:"Create dispute",
+        bodyHtml:`
+          <div class="field"><label for="cdJob">Job</label>
+            <select id="cdJob">${db.jobs.filter(j=>!j.archived).map(j=>`<option value="${escapeHtml(j.id)}"${jobId&&j.id===jobId?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}</select>
           </div>
-          <div class="field">
-            <label for="cdNote">Initial note</label>
-            <input id="cdNote" type="text" placeholder="Short note" />
-          </div>
-          <div class="banner warn">If pauseRelease is ON, “Send to partner” will be blocked.</div>
-          <div class="hstack">
-            <label class="muted"><input type="checkbox" id="cdPause" checked /> Pause releases</label>
-          </div>
+          <div class="field"><label for="cdTitle">Title</label><input id="cdTitle" placeholder="Dispute title" /></div>
+          <div class="field"><label for="cdNote">Initial note</label><input id="cdNote" placeholder="Short note" /></div>
+          <div class="hstack"><label class="muted"><input type="checkbox" id="cdPause" checked /> Pause releases</label></div>
         `,
-        footerHtml: `
-          <div class="muted">Creates an open dispute.</div>
-          <div class="hstack">
-            <button class="btn" type="button" data-action="modal-close">Cancel</button>
-            <button class="btn primary" type="button" data-action="confirm-create-dispute">Create</button>
+        footerHtml:`
+          <div class="hstack" style="justify-content:flex-end;">
+            <button class="btn" data-action="modal-close" type="button">Cancel</button>
+            <button class="btn primary" data-action="confirm-create-dispute" type="button">Create</button>
           </div>
         `
       });
       return;
     }
-
     if (action === "confirm-create-dispute") {
       const jobId = String($("#cdJob")?.value || "").trim();
       const title = String($("#cdTitle")?.value || "").trim() || "Dispute";
       const note = String($("#cdNote")?.value || "").trim();
-      const pause = Boolean($("#cdPause")?.checked);
+      const pause = !!$("#cdPause")?.checked;
 
       const job = getJob(jobId);
-      if (!job) { toast("bad", "Missing job", "Select a job first."); return; }
+      if (!job) { toast("bad","Missing job","Select a job first."); return; }
 
       const id = uid("dis");
       const d = {
-        id,
-        jobId,
-        title,
+        id, jobId, title,
         status: "open",
         pauseRelease: pause,
         createdAt: nowIso(),
         updatedAt: nowIso(),
-        timeline: [{ ts: nowIso(), byRole: ui.role, type: "opened", text: note || "Dispute opened (demo)." }],
+        timeline: [{ ts: nowIso(), byRole: ui.role, type:"opened", text: note || "Dispute opened (demo)." }],
       };
-
       db.disputes.unshift(d);
-      job.disputeIds = Array.from(new Set([...(job.disputeIds || []), id]));
+      job.disputeIds = Array.from(new Set([...(job.disputeIds||[]), id]));
       job.updatedAt = nowIso();
-
       saveDb();
       closeModal();
-      toast("ok", "Dispute created", "Dispute created and linked to job.");
-      log("create_dispute", "dispute", id, jobId, { pauseRelease: pause });
+      toast("ok","Created","Dispute created.");
+      log("create_dispute","dispute",id,jobId,{pauseRelease:pause});
       routeTo(`#/disputes?job=${encodeURIComponent(jobId)}`);
       return;
     }
-
     if (action === "toggle-pause") {
       const d = db.disputes.find(x => x.id === data.disputeId);
       if (!d) return;
       d.pauseRelease = !d.pauseRelease;
       d.updatedAt = nowIso();
-      d.timeline.push({ ts: nowIso(), byRole: ui.role, type: "toggle_pause", text: `pauseRelease set to ${d.pauseRelease}` });
+      d.timeline.push({ ts: nowIso(), byRole: ui.role, type:"toggle_pause", text:`pauseRelease set to ${d.pauseRelease}` });
       saveDb();
-      toast("ok", "Updated", `pauseRelease is now ${d.pauseRelease ? "ON" : "OFF"}.`);
-      log("toggle_pause_release", "dispute", d.id, d.jobId, { pauseRelease: d.pauseRelease });
+      toast("ok","Updated",`pauseRelease ${d.pauseRelease ? "ON" : "OFF"}.`);
+      log("toggle_pause_release","dispute",d.id,d.jobId,{pauseRelease:d.pauseRelease});
       render();
       return;
     }
-
     if (action === "toggle-dispute") {
       const d = db.disputes.find(x => x.id === data.disputeId);
       if (!d) return;
       d.status = d.status === "closed" ? "open" : "closed";
       d.updatedAt = nowIso();
-      d.timeline.push({ ts: nowIso(), byRole: ui.role, type: "toggle_status", text: `status set to ${d.status}` });
+      d.timeline.push({ ts: nowIso(), byRole: ui.role, type:"toggle_status", text:`status set to ${d.status}` });
       saveDb();
-      toast("ok", "Updated", `Dispute is now ${d.status}.`);
-      log("toggle_dispute_status", "dispute", d.id, d.jobId, { status: d.status });
+      toast("ok","Updated",`Dispute is now ${d.status}.`);
+      log("toggle_dispute_status","dispute",d.id,d.jobId,{status:d.status});
       render();
       return;
     }
-
     if (action === "view-dispute") {
       const d = db.disputes.find(x => x.id === data.disputeId);
       if (!d) return;
       const job = getJob(d.jobId);
-
       openModal({
-        title: "Dispute timeline",
-        ariaLabel: "Dispute timeline",
-        bodyHtml: `
-          <div class="banner info">
-            <strong>${escapeHtml(d.title)}</strong>
-            <div class="muted">${escapeHtml(job ? job.name : d.jobId)} • <span class="pill ${d.status==="closed"?"ok":"warn"}">${escapeHtml(d.status)}</span></div>
-          </div>
-          <div class="sep"></div>
+        title:"Dispute timeline",
+        ariaLabel:"Dispute timeline",
+        bodyHtml:`
           <div class="card">
-            <div class="card-title">Timeline</div>
+            <div class="card-title">${escapeHtml(d.title)}</div>
+            <div class="card-sub">${escapeHtml(job ? job.name : d.jobId)}</div>
             <div class="sep"></div>
-            <div class="vstack">
-              ${d.timeline.map(t => `
-                <div class="banner ${t.type==="opened"?"warn":"info"}">
-                  <div class="split">
-                    <div>
-                      <strong>${escapeHtml(ROLE_LABEL[t.byRole] || t.byRole)}</strong>
-                      <div class="muted">${escapeHtml(formatDate(t.ts))} • ${escapeHtml(t.type)}</div>
-                    </div>
-                    <span class="pill ${d.pauseRelease?"bad":"ok"}">pauseRelease ${d.pauseRelease ? "ON" : "OFF"}</span>
-                  </div>
-                  <div class="sep"></div>
-                  <div>${escapeHtml(t.text)}</div>
+            ${(d.timeline||[]).map(t => `
+              <div class="card" style="box-shadow:none;">
+                <div class="split">
+                  <div><strong>${escapeHtml(ROLE_LABEL[t.byRole] || t.byRole)}</strong><div class="muted">${escapeHtml(formatDate(t.ts))} • ${escapeHtml(t.type)}</div></div>
+                  <span class="pill ${d.pauseRelease?"bad":"ok"}">pauseRelease ${d.pauseRelease?"ON":"OFF"}</span>
                 </div>
-              `).join("")}
-            </div>
+                <div class="sep"></div>
+                <div>${escapeHtml(t.text)}</div>
+              </div>
+            `).join("")}
           </div>
         `,
-        footerHtml: `
-          <div class="muted">This dispute can block “Send to partner” if pauseRelease is ON.</div>
-          <div class="hstack"><button class="btn" type="button" data-action="modal-close">Close</button></div>
-        `
+        footerHtml:`<button class="btn" type="button" data-action="modal-close">Close</button>`
       });
       return;
     }
 
-    // Company / bank
+    // company / bank
     if (action === "edit-bank") {
       const payee = getPayee(data.payeeId);
       if (!payee) return;
-      if (!perms().canEditBank) { toast("bad", "Not allowed", "This role cannot edit bank details."); return; }
+      if (!perms().canEditBank) { toast("bad","Not allowed","This role cannot edit bank details."); return; }
 
       openModal({
-        title: "Edit bank details",
-        ariaLabel: "Edit bank details",
-        bodyHtml: `
-          <div class="banner warn">Editing sets <strong>bankChanged</strong>. A Manager/Admin must confirm before sending releases.</div>
+        title:"Edit bank details",
+        ariaLabel:"Edit bank details",
+        bodyHtml:`
+          <div class="card" style="border-color: rgba(240,207,99,.55); background: rgba(240,207,99,.14);">
+            Editing sets <strong>bankChanged</strong>. Manager/Admin must confirm before sending releases.
+          </div>
           <div class="sep"></div>
           <div class="grid cols-2">
-            <div class="field"><label for="ebBankName">Bank name</label><input id="ebBankName" type="text" value="${escapeHtml(payee.bank.bankName)}" /></div>
-            <div class="field"><label for="ebAcctName">Account name</label><input id="ebAcctName" type="text" value="${escapeHtml(payee.bank.accountName)}" /></div>
-            <div class="field"><label for="ebSort">Sort code</label><input id="ebSort" type="text" value="${escapeHtml(payee.bank.sortCode)}" /></div>
-            <div class="field"><label for="ebAcct">Account number</label><input id="ebAcct" type="text" value="${escapeHtml(payee.bank.accountNumber)}" /></div>
+            <div class="field"><label for="ebBankName">Bank name</label><input id="ebBankName" value="${escapeHtml(payee.bank.bankName)}" /></div>
+            <div class="field"><label for="ebAcctName">Account name</label><input id="ebAcctName" value="${escapeHtml(payee.bank.accountName)}" /></div>
+            <div class="field"><label for="ebSort">Sort code</label><input id="ebSort" value="${escapeHtml(payee.bank.sortCode)}" /></div>
+            <div class="field"><label for="ebAcct">Account number</label><input id="ebAcct" value="${escapeHtml(payee.bank.accountNumber)}" /></div>
           </div>
         `,
-        footerHtml: `
-          <div class="muted">${escapeHtml(payee.name)}</div>
-          <div class="hstack">
-            <button class="btn" type="button" data-action="modal-close">Cancel</button>
-            <button class="btn primary" type="button" data-action="confirm-edit-bank" data-payee-id="${escapeHtml(payee.id)}">Save</button>
+        footerHtml:`
+          <div class="hstack" style="justify-content:flex-end;">
+            <button class="btn" data-action="modal-close" type="button">Cancel</button>
+            <button class="btn primary" data-action="confirm-edit-bank" data-payee-id="${escapeHtml(payee.id)}" type="button">Save</button>
           </div>
         `
       });
       return;
     }
-
     if (action === "confirm-edit-bank") {
       const payee = getPayee(data.payeeId);
       if (!payee) return;
-
       payee.bank.bankName = String($("#ebBankName")?.value || payee.bank.bankName).trim();
       payee.bank.accountName = String($("#ebAcctName")?.value || payee.bank.accountName).trim();
       payee.bank.sortCode = String($("#ebSort")?.value || payee.bank.sortCode).trim();
@@ -2939,78 +3279,273 @@
       payee.bankChanged = true;
       payee.bankConfirmed = false;
       payee.updatedAt = nowIso();
-
       saveDb();
       closeModal();
-      toast("ok", "Bank updated", "Bank details updated and marked as needing confirmation.");
-      log("edit_bank", "payee", payee.id, null, { bankChanged: true });
+      toast("ok","Updated","Bank details updated and marked for confirmation.");
+      log("edit_bank","payee",payee.id,null,{bankChanged:true});
       render();
       return;
     }
-
     if (action === "confirm-bank") {
       const payee = getPayee(data.payeeId);
       if (!payee) return;
-      if (!perms().canConfirmBank) { toast("bad", "Not allowed", "This role cannot confirm bank details."); return; }
-
+      if (!perms().canConfirmBank) { toast("bad","Not allowed","This role cannot confirm bank details."); return; }
       payee.bankConfirmed = true;
       payee.bankChanged = false;
       payee.updatedAt = nowIso();
-
       saveDb();
-      toast("ok", "Confirmed", "Bank details confirmed.");
-      log("confirm_bank", "payee", payee.id, null, {});
+      toast("ok","Confirmed","Bank details confirmed.");
+      log("confirm_bank","payee",payee.id,null,{});
       render();
       return;
     }
 
-    // Messages
-    if (action === "post-message") {
-      const job = getJob(data.jobId);
-      if (!job) return;
+    // releases (minimal create/view + flow)
+    if (action === "create-release") {
+      openModal({
+        title:"Create release request",
+        ariaLabel:"Create release request",
+        bodyHtml:`
+          <div class="grid cols-2">
+            <div class="field">
+              <label for="crJob">Job</label>
+              <select id="crJob">${db.jobs.filter(j=>!j.archived).map(j=>`<option value="${escapeHtml(j.id)}"${(data.jobId&&j.id===data.jobId)?" selected":""}>${escapeHtml(j.name)}</option>`).join("")}</select>
+            </div>
+            <div class="field">
+              <label for="crTitle">Title</label>
+              <input id="crTitle" placeholder="e.g., Release — First fix stage" />
+            </div>
+          </div>
+          <div class="sep"></div>
+          <div class="card" style="box-shadow:none;">
+            <div class="card-title">Payee splits</div>
+            <div class="card-sub">Enter amounts for each payee (demo).</div>
+            <div class="sep"></div>
+            ${db.payees.map(p=>`
+              <div class="split">
+                <div><strong>${escapeHtml(p.name)}</strong><div class="muted">${escapeHtml(p.type)}</div></div>
+                <div class="field" style="max-width:220px;"><label class="sr-only" for="cr_${escapeHtml(p.id)}">Amount</label><input id="cr_${escapeHtml(p.id)}" type="number" step="0.01" inputmode="decimal" placeholder="0.00" /></div>
+              </div>
+              <div class="sep"></div>
+            `).join("")}
+          </div>
+        `,
+        footerHtml:`
+          <div class="hstack" style="justify-content:flex-end;">
+            <button class="btn" data-action="modal-close" type="button">Cancel</button>
+            <button class="btn primary" data-action="confirm-create-release" type="button">Create</button>
+          </div>
+        `
+      });
+      return;
+    }
 
-      const text = String($("#msgText")?.value || "").trim();
-      if (!text) { toast("warn", "Empty", "Write a message first."); return; }
+    if (action === "confirm-create-release") {
+      const jobId = String($("#crJob")?.value || "").trim();
+      const title = String($("#crTitle")?.value || "").trim() || "Release — Draft";
+      const job = getJob(jobId);
+      if (!job) { toast("bad","Missing job","Select a job."); return; }
 
-      db.messages.push({ id: uid("msg"), threadId: job.threadId, jobId: job.id, ts: nowIso(), byRole: ui.role, text, attachments: [] });
+      const splits = [];
+      for (const p of db.payees) {
+        const val = Number($(`#cr_${p.id}`)?.value || 0);
+        if (val > 0) splits.push({ payeeId: p.id, amount: Math.round(val*100)/100 });
+      }
+
+      const relId = uid("rel");
+      const inv = job.invoiceIds?.[0] ? getInvoice(job.invoiceIds[0]) : null;
+
+      db.releases.unshift({
+        id: relId,
+        jobId,
+        invoiceId: inv ? inv.id : null,
+        milestoneId: job.milestoneIds?.[0] || null,
+        title,
+        status: "Draft",
+        approvals: { manager:false, client:false },
+        sentToPartnerAt: null,
+        releasedAt: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        payeeSplits: splits.length ? splits : [{ payeeId:"pay_oakbeam", amount: 1000 }],
+        notes: "",
+      });
+
+      job.releaseIds = Array.from(new Set([...(job.releaseIds||[]), relId]));
+      job.updatedAt = nowIso();
       saveDb();
-      toast("ok", "Posted", "Message posted to thread.");
-      log("post_message", "message", "thread", job.id, { length: text.length });
+      closeModal();
+      toast("ok","Created","Release created as Draft.");
+      log("create_release","release",relId,jobId,{title});
+      routeTo(`#/payments?job=${encodeURIComponent(jobId)}`);
+      return;
+    }
+
+    if (action === "view-release") {
+      const rel = getRelease(data.releaseId);
+      if (!rel) return;
+      const job = getJob(rel.jobId);
+      const blockers = releaseBlockers(rel);
+
+      openModal({
+        title:"Release details",
+        ariaLabel:"Release details",
+        bodyHtml:`
+          <div class="card">
+            <div class="card-title">${escapeHtml(rel.title)}</div>
+            <div class="card-sub">${escapeHtml(job ? job.name : rel.jobId)}</div>
+            <div class="sep"></div>
+            <div class="split"><div class="muted">Status</div><div><span class="pill info">${escapeHtml(rel.status)}</span></div></div>
+            <div class="split"><div class="muted">Mgr approved</div><div><strong>${rel.approvals?.manager?"Yes":"No"}</strong></div></div>
+            <div class="split"><div class="muted">Client approved</div><div><strong>${rel.approvals?.client?"Yes":"No"}</strong></div></div>
+            <div class="sep"></div>
+            <div class="card" style="box-shadow:none;">
+              <div class="card-title">Splits</div>
+              <div class="sep"></div>
+              ${(rel.payeeSplits||[]).map(s=>{
+                const p = getPayee(s.payeeId);
+                return `<div class="split"><div>${escapeHtml(p?p.name:s.payeeId)}</div><div><strong>${escapeHtml(formatGBP(s.amount))}</strong></div></div>`;
+              }).join("")}
+            </div>
+            <div class="sep"></div>
+            ${blockers.length ? `<div class="card" style="border-color: rgba(225,96,91,.28); background: rgba(225,96,91,.10);">
+              <div style="font-weight:800;">Blockers</div>
+              <ul>${blockers.map(b=>`<li>${escapeHtml(b)}</li>`).join("")}</ul>
+            </div>` : `<div class="card" style="border-color: rgba(88,182,106,.30); background: rgba(88,182,106,.10);"><div style="font-weight:800;">No blockers</div></div>`}
+            <div class="sep"></div>
+            <div class="card" style="border-color: rgba(77,131,255,.22); background: rgba(77,131,255,.06);"><strong>Funds statement:</strong> ${escapeHtml(FUNDS_STATEMENT)}</div>
+          </div>
+        `,
+        footerHtml:`<a class="btn primary" href="#/payments?job=${encodeURIComponent(rel.jobId)}">Open payments</a><button class="btn" type="button" data-action="modal-close">Close</button>`
+      });
+      return;
+    }
+
+    if (action === "submit-release") {
+      const rel = getRelease(data.releaseId);
+      if (!rel) return;
+      if (rel.status !== "Draft") { toast("warn","Not valid","Only Draft can be submitted."); return; }
+      rel.status = "Submitted";
+      rel.updatedAt = nowIso();
+      saveDb();
+      toast("ok","Submitted","Release submitted for approvals.");
+      log("submit_release","release",rel.id,rel.jobId,{});
       render();
       return;
     }
 
-    // Reports CSV
+    if (action === "approve-release-manager") {
+      const rel = getRelease(data.releaseId);
+      if (!rel) return;
+      if (!perms().canApproveManager) { toast("bad","Not allowed","This role cannot manager-approve."); return; }
+      if (rel.status !== "Submitted") { toast("warn","Not valid","Manager approval is after submission."); return; }
+      rel.approvals.manager = true;
+      rel.status = "Manager approved";
+      rel.updatedAt = nowIso();
+      saveDb();
+      toast("ok","Approved","Manager approval recorded.");
+      log("approve_release_manager","release",rel.id,rel.jobId,{});
+      render();
+      return;
+    }
+
+    if (action === "approve-release-client") {
+      const rel = getRelease(data.releaseId);
+      if (!rel) return;
+      if (!perms().canApproveClient) { toast("bad","Not allowed","This role cannot client-approve."); return; }
+      if (rel.status !== "Manager approved") { toast("warn","Not valid","Client approval is after manager approval."); return; }
+      rel.approvals.client = true;
+      rel.status = "Client approved";
+      rel.updatedAt = nowIso();
+      saveDb();
+      toast("ok","Approved","Client approval recorded.");
+      log("approve_release_client","release",rel.id,rel.jobId,{});
+      render();
+      return;
+    }
+
+    if (action === "send-to-partner") {
+      const rel = getRelease(data.releaseId);
+      if (!rel) return;
+      if (!perms().canSendToPartner) { toast("bad","Not allowed","This role cannot send to partner."); return; }
+      if (rel.status !== "Client approved") { toast("warn","Not ready","Must be Client approved first."); return; }
+
+      const blockers = releaseBlockers(rel);
+      if (blockers.length) {
+        toast("bad","Blocked", blockers[0]);
+        openModal({
+          title:"Release blocked",
+          ariaLabel:"Release blocked",
+          bodyHtml:`<div class="card" style="border-color: rgba(225,96,91,.28); background: rgba(225,96,91,.10);">
+            <div style="font-weight:800;">Cannot “Send to partner” yet</div>
+            <ul>${blockers.map(b=>`<li>${escapeHtml(b)}</li>`).join("")}</ul>
+          </div>
+          <div class="sep"></div>
+          <div class="card" style="border-color: rgba(77,131,255,.22); background: rgba(77,131,255,.06);"><strong>Funds statement:</strong> ${escapeHtml(FUNDS_STATEMENT)}</div>`,
+          footerHtml:`<button class="btn" type="button" data-action="modal-close">Close</button>`
+        });
+        log("send_to_partner_blocked","release",rel.id,rel.jobId,{blockers});
+        return;
+      }
+
+      rel.status = "Sent to partner";
+      rel.sentToPartnerAt = nowIso();
+      rel.updatedAt = nowIso();
+      saveDb();
+      toast("ok","Sent","Release sent to escrow/PBA partner (demo).");
+      log("send_to_partner","release",rel.id,rel.jobId,{});
+      render();
+      return;
+    }
+
+    if (action === "mark-released") {
+      const rel = getRelease(data.releaseId);
+      if (!rel) return;
+      if (!perms().canMarkReleased) { toast("bad","Not allowed","Only Admin can mark released."); return; }
+      if (rel.status !== "Sent to partner") { toast("warn","Not valid","Must be sent to partner first."); return; }
+      rel.status = "Released";
+      rel.releasedAt = nowIso();
+      rel.updatedAt = nowIso();
+      saveDb();
+      toast("ok","Released","Release marked as released (demo).");
+      log("mark_released","release",rel.id,rel.jobId,{});
+      render();
+      return;
+    }
+
+    // CSV export
     if (action === "export-csv") {
-      if (!perms().canExport) { toast("bad", "Not allowed", "This role cannot export CSV."); return; }
+      if (!perms().canExport) { toast("bad","Not allowed","This role cannot export CSV."); return; }
       const which = data.csv;
 
       const map = {
-        jobs: () => db.jobs.map(j => ({ id: j.id, name: j.name, clientName: j.clientName, address: j.address, status: j.status, archived: j.archived, createdAt: j.createdAt, updatedAt: j.updatedAt })),
-        invoices: () => db.invoices.map(i => ({ id: i.id, jobId: i.jobId, number: i.number, clientPaymentBeforeVat: i.clientPaymentBeforeVat, feeVatRate: i.feeVatRate, createdAt: i.createdAt, updatedAt: i.updatedAt })),
-        milestones: () => db.milestones.map(m => ({ id: m.id, jobId: m.jobId, title: m.title, evidenceRequired: m.evidenceRequired, evidenceProvided: m.evidenceProvided, targetDate: m.targetDate })),
-        releases: () => db.releases.map(r => ({ id: r.id, jobId: r.jobId, title: r.title, status: r.status, managerApproved: r.approvals.manager, clientApproved: r.approvals.client, sentToPartnerAt: r.sentToPartnerAt, releasedAt: r.releasedAt, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-        disputes: () => db.disputes.map(d => ({ id: d.id, jobId: d.jobId, title: d.title, status: d.status, pauseRelease: d.pauseRelease, createdAt: d.createdAt, updatedAt: d.updatedAt })),
-        messages: () => db.messages.map(m => ({ id: m.id, jobId: m.jobId, threadId: m.threadId, ts: m.ts, byRole: m.byRole, text: m.text })),
-        payees: () => db.payees.map(p => ({ id: p.id, name: p.name, type: p.type, vatRegistered: p.vatRegistered, vatNumber: p.vatNumber, bankName: p.bank.bankName, sortCode: p.bank.sortCode, accountNumber: p.bank.accountNumber, bankChanged: p.bankChanged, bankConfirmed: p.bankConfirmed, updatedAt: p.updatedAt })),
-        auditLog: () => db.auditLog.map(a => ({ id: a.id, ts: a.ts, actorRole: a.actorRole, action: a.action, entityType: a.entityType, entityId: a.entityId, jobId: a.jobId, details: JSON.stringify(a.details || {}) })),
+        jobs: () => db.jobs.map(j => ({ id:j.id, name:j.name, location:j.location, clientName:j.clientName, status:j.status, archived:j.archived, createdAt:j.createdAt, updatedAt:j.updatedAt })),
+        invoices: () => db.invoices.map(i => ({ id:i.id, jobId:i.jobId, number:i.number, status:i.status, clientPaymentBeforeVat:i.clientPaymentBeforeVat, feeVatRate:i.feeVatRate, mainContractorAmount:i.mainContractorAmount, createdAt:i.createdAt, updatedAt:i.updatedAt })),
+        milestones: () => db.milestones.map(m => ({ id:m.id, jobId:m.jobId, title:m.title, evidenceRequired:m.evidenceRequired, evidenceProvided:m.evidenceProvided, targetDate:m.targetDate })),
+        releases: () => db.releases.map(r => ({ id:r.id, jobId:r.jobId, title:r.title, status:r.status, managerApproved:r.approvals?.manager, clientApproved:r.approvals?.client, sentToPartnerAt:r.sentToPartnerAt, releasedAt:r.releasedAt, createdAt:r.createdAt, updatedAt:r.updatedAt })),
+        disputes: () => db.disputes.map(d => ({ id:d.id, jobId:d.jobId, title:d.title, status:d.status, pauseRelease:d.pauseRelease, createdAt:d.createdAt, updatedAt:d.updatedAt })),
+        messages: () => db.messages.map(m => ({ id:m.id, jobId:m.jobId, threadId:m.threadId, ts:m.ts, byRole:m.byRole, text:m.text })),
+        payees: () => db.payees.map(p => ({ id:p.id, name:p.name, type:p.type, vatRegistered:p.vatRegistered, vatNumber:p.vatNumber, bankName:p.bank.bankName, sortCode:p.bank.sortCode, accountNumber:p.bank.accountNumber, bankChanged:p.bankChanged, bankConfirmed:p.bankConfirmed, updatedAt:p.updatedAt })),
+        auditLog: () => db.auditLog.map(a => ({ id:a.id, ts:a.ts, actorRole:a.actorRole, action:a.action, entityType:a.entityType, entityId:a.entityId, jobId:a.jobId, details: JSON.stringify(a.details||{}) })),
       };
 
-      if (!map[which]) { toast("bad", "Unknown", "Unknown dataset."); return; }
-
+      if (!map[which]) { toast("bad","Unknown","Unknown dataset."); return; }
       const rows = map[which]();
       const csv = toCsv(rows);
       downloadText(`approvehub_${which}_${new Date().toISOString().slice(0,10)}.csv`, csv, "text/csv");
-      toast("ok", "Exported", `Exported ${which} CSV.`);
-      log("export_csv", "report", which, null, { rows: rows.length });
+      toast("ok","Exported",`Exported ${which} CSV.`);
+      log("export_csv","report",which,null,{rows:rows.length});
       return;
     }
 
-    toast("warn", "Unknown action", `No handler for: ${action}`);
+    // toast close (if triggered in view somehow)
+    if (action === "toast-close") return;
+
+    toast("warn","Unknown action",`No handler for: ${action}`);
   }
 
   /* ---------------------------
-     Init (boot once)
+     Init
   --------------------------- */
   function init() {
     applyThemePref(ui.theme);
@@ -3029,8 +3564,6 @@
     render();
   }
 
-  // boot (script is defer, so DOM is ready)
   init();
-
 })();
-// PART 6 END
+// PART 7 END
