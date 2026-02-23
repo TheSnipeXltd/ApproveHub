@@ -2,28 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <title>ApproveHub — Approvals & Project Payments Demo</title>
+  <title>ApproveHub — Approvals &amp; Project Payments Demo</title>
 
-  <!-- Inter (allowed) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="assets/css/app.css" />
+  <link rel="stylesheet" href="assets/css/app.css?v=1" />
+
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script defer src="assets/js/app.js?v=1"></script>
 </head>
 
 <body>
-  <div class="app-shell">
-    <a class="skip-link" href="#main">Skip to content</a>
+  <a class="skip-link" href="#main">Skip to content</a>
 
-    <header class="app-header">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">⌁</div>
-        <div class="brand-text">
-          <div class="brand-name">ApproveHub</div>
-          <div class="brand-sub">Approvals + Payments</div>
+  <div class="app-shell">
+    <header class="app-header" role="banner">
+      <div class="header-left">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">AH</div>
+          <div class="brand-text">
+            <div class="brand-name">ApproveHub</div>
+            <div class="brand-sub">Approvals + Payments</div>
+          </div>
         </div>
       </div>
 
@@ -95,20 +99,13 @@
         </footer>
       </main>
     </div>
-
-    <!-- REQUIRED roots -->
-    <div id="toasts" class="toasts" aria-live="polite" aria-relevant="additions text"></div>
-    <div id="modalRoot" class="modal-root" hidden></div>
-
-    <noscript>
-      <div class="noscript">
-        This demo requires JavaScript enabled.
-      </div>
-    </noscript>
   </div>
 
-  <!-- html2pdf (allowed). App will fallback safely if missing/blocked -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script defer src="assets/js/app.js?v=1"></script>
+  <div id="modalRoot" class="modal-root" aria-hidden="true" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <noscript>
+    <div class="noscript">This demo requires JavaScript enabled.</div>
+  </noscript>
 </body>
 </html>
