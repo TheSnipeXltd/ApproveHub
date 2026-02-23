@@ -1,31 +1,30 @@
 <!doctype html>
-<html lang="en-GB">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
   <title>ApproveHub — Approvals & Project Payments Demo</title>
-  <meta name="description" content="ApproveHub demo: project payments + approvals with audit trail. Static demo app (localStorage)." />
-  <meta name="theme-color" content="#0b1220" />
-  <link rel="icon" href="data:," />
-  <!-- Inter font (allowed) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Inter (allowed) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="assets/css/app.css" />
 </head>
-<body>
-  <a class="skip-link" href="#main">Skip to content</a>
 
-  <div id="appShell" class="app-shell">
-    <header class="app-header" role="banner">
-      <div class="header-left">
-        <a class="brand" href="#/jobs" aria-label="ApproveHub home">
-          <div class="brand-mark" aria-hidden="true"></div>
-          <div class="brand-text">
-            <div class="brand-name">ApproveHub</div>
-            <div class="brand-sub">Approvals + Payments</div>
-          </div>
-        </a>
+<body>
+  <div class="app-shell">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">⌁</div>
+        <div class="brand-text">
+          <div class="brand-name">ApproveHub</div>
+          <div class="brand-sub">Approvals + Payments</div>
+        </div>
       </div>
 
       <div class="header-center">
@@ -65,63 +64,22 @@
 
     <div class="app-body">
       <nav id="sideNav" class="app-nav" aria-label="Primary">
-        <a class="nav-item" href="#/jobs" data-route="jobs">
-          <span class="nav-ic" aria-hidden="true">🗂</span>
-          <span class="nav-t">Jobs</span>
-          <span class="nav-count" id="navCountJobs" hidden>0</span>
-        </a>
-
-        <a class="nav-item" href="#/payments" data-route="payments">
-          <span class="nav-ic" aria-hidden="true">💳</span>
-          <span class="nav-t">Payments</span>
-          <span class="nav-count" id="navCountPayments" hidden>0</span>
-        </a>
-
-        <a class="nav-item" href="#/approvals" data-route="approvals">
-          <span class="nav-ic" aria-hidden="true">✅</span>
-          <span class="nav-t">Approvals</span>
-          <span class="nav-count" id="navCountApprovals" hidden>0</span>
-        </a>
-
-        <a class="nav-item" href="#/disputes" data-route="disputes">
-          <span class="nav-ic" aria-hidden="true">⚠</span>
-          <span class="nav-t">Disputes</span>
-          <span class="nav-count" id="navCountDisputes" hidden>0</span>
-        </a>
-
-        <a class="nav-item" href="#/messages" data-route="messages">
-          <span class="nav-ic" aria-hidden="true">💬</span>
-          <span class="nav-t">Messages</span>
-          <span class="nav-count" id="navCountMessages" hidden>0</span>
-        </a>
-
-        <a class="nav-item" href="#/company" data-route="company">
-          <span class="nav-ic" aria-hidden="true">🏢</span>
-          <span class="nav-t">Company</span>
-        </a>
-
-        <a class="nav-item" href="#/reports" data-route="reports">
-          <span class="nav-ic" aria-hidden="true">📈</span>
-          <span class="nav-t">Reports</span>
-        </a>
-
-        <a class="nav-item" href="#/settings" data-route="settings">
-          <span class="nav-ic" aria-hidden="true">🛠</span>
-          <span class="nav-t">Settings</span>
-        </a>
+        <a class="nav-item" href="#/jobs" data-route="jobs"><span class="nav-ic" aria-hidden="true">🗂</span><span class="nav-t">Jobs</span><span class="nav-count" id="navCountJobs" hidden>0</span></a>
+        <a class="nav-item" href="#/payments" data-route="payments"><span class="nav-ic" aria-hidden="true">💳</span><span class="nav-t">Payments</span><span class="nav-count" id="navCountPayments" hidden>0</span></a>
+        <a class="nav-item" href="#/approvals" data-route="approvals"><span class="nav-ic" aria-hidden="true">✅</span><span class="nav-t">Approvals</span><span class="nav-count" id="navCountApprovals" hidden>0</span></a>
+        <a class="nav-item" href="#/disputes" data-route="disputes"><span class="nav-ic" aria-hidden="true">⚠</span><span class="nav-t">Disputes</span><span class="nav-count" id="navCountDisputes" hidden>0</span></a>
+        <a class="nav-item" href="#/messages" data-route="messages"><span class="nav-ic" aria-hidden="true">💬</span><span class="nav-t">Messages</span><span class="nav-count" id="navCountMessages" hidden>0</span></a>
+        <a class="nav-item" href="#/company" data-route="company"><span class="nav-ic" aria-hidden="true">🏢</span><span class="nav-t">Company</span></a>
+        <a class="nav-item" href="#/reports" data-route="reports"><span class="nav-ic" aria-hidden="true">📈</span><span class="nav-t">Reports</span></a>
+        <a class="nav-item" href="#/settings" data-route="settings"><span class="nav-ic" aria-hidden="true">🛠</span><span class="nav-t">Settings</span></a>
 
         <div class="nav-footer">
-          <div class="tiny">
-            <span class="dot" aria-hidden="true"></span>
-            <span id="envLabel">Static demo • localStorage</span>
-          </div>
+          <div class="tiny"><span class="dot" aria-hidden="true"></span><span id="envLabel">Static demo • localStorage</span></div>
         </div>
       </nav>
 
       <main id="main" class="app-main" tabindex="-1">
-        <div id="view" class="view">
-          <!-- routed content -->
-        </div>
+        <div id="view" class="view"><!-- routed content --></div>
 
         <footer class="app-footer">
           <div class="footer-links">
@@ -132,27 +90,24 @@
             <a href="cookies.html">Cookies</a>
           </div>
           <div class="footer-legal">
-            <!-- MUST appear in footer exactly -->
             We do not hold client funds. Funds are held and released by our escrow/PBA partner.
           </div>
         </footer>
       </main>
     </div>
+
+    <!-- REQUIRED roots -->
+    <div id="toasts" class="toasts" aria-live="polite" aria-relevant="additions text"></div>
+    <div id="modalRoot" class="modal-root" hidden></div>
+
+    <noscript>
+      <div class="noscript">
+        This demo requires JavaScript enabled.
+      </div>
+    </noscript>
   </div>
 
-  <!-- Toasts -->
-  <div id="toasts" class="toasts" aria-live="polite" aria-relevant="additions"></div>
-
-  <!-- Modal root -->
-  <div id="modalRoot" class="modal-root" aria-hidden="true"></div>
-
-  <noscript>
-    <div class="noscript">
-      This demo requires JavaScript enabled.
-    </div>
-  </noscript>
-
-  <!-- PDF generation (allowed) -->
+  <!-- html2pdf (allowed). App will fallback safely if missing/blocked -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script defer src="assets/js/app.js?v=1"></script>
 </body>
